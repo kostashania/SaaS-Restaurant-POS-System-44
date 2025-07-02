@@ -14,19 +14,19 @@ const mockTables = [
 ];
 
 const mockMenuItems = [
-  { id: 'item-1', name: 'Burger Deluxe', base_price: 14.99, description: 'Premium beef burger with all the fixings', category: 'Food' },
-  { id: 'item-2', name: 'Caesar Salad', base_price: 12.99, description: 'Fresh romaine with caesar dressing', category: 'Food' },
-  { id: 'item-3', name: 'Fish & Chips', base_price: 16.99, description: 'Beer battered fish with crispy fries', category: 'Food' },
-  { id: 'item-4', name: 'Pasta Carbonara', base_price: 15.99, description: 'Creamy pasta with bacon and parmesan', category: 'Food' },
-  { id: 'item-5', name: 'Chicken Wings', base_price: 13.99, description: '10 piece wings with your choice of sauce', category: 'Food' },
-  { id: 'item-6', name: 'French Fries', base_price: 5.99, description: 'Crispy golden fries', category: 'Food' },
-  { id: 'item-7', name: 'Coca Cola', base_price: 2.99, description: 'Classic soft drink', category: 'Drinks' },
-  { id: 'item-8', name: 'Coffee', base_price: 3.99, description: 'Freshly brewed coffee', category: 'Drinks' }
+  { id: 'item-1', name: 'Burger Deluxe', base_price: 14.99, description: 'Premium beef burger with all the fixings', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-2', name: 'Caesar Salad', base_price: 12.99, description: 'Fresh romaine with caesar dressing', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-3', name: 'Fish & Chips', base_price: 16.99, description: 'Beer battered fish with crispy fries', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-4', name: 'Pasta Carbonara', base_price: 15.99, description: 'Creamy pasta with bacon and parmesan', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-5', name: 'Chicken Wings', base_price: 13.99, description: '10 piece wings with your choice of sauce', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-6', name: 'French Fries', base_price: 5.99, description: 'Crispy golden fries', category: 'Food', category_id: 'cat-1', is_available: true },
+  { id: 'item-7', name: 'Coca Cola', base_price: 2.99, description: 'Classic soft drink', category: 'Drinks', category_id: 'cat-2', is_available: true },
+  { id: 'item-8', name: 'Coffee', base_price: 3.99, description: 'Freshly brewed coffee', category: 'Drinks', category_id: 'cat-2', is_available: true }
 ];
 
 const mockCategories = [
-  { id: 'cat-1', name: 'Food', sort_order: 1 },
-  { id: 'cat-2', name: 'Drinks', sort_order: 2 }
+  { id: 'cat-1', name: 'Food', sort_order: 1, is_active: true },
+  { id: 'cat-2', name: 'Drinks', sort_order: 2, is_active: true }
 ];
 
 export const usePosStore = create((set, get) => ({
@@ -51,8 +51,16 @@ export const usePosStore = create((set, get) => ({
   // Check if we're in offline demo mode
   getOfflineMode: () => {
     // Check if auth store is in offline demo mode
-    const authStore = window?.authStore || {};
-    return authStore.isOfflineDemo || false;
+    try {
+      const authStoreString = localStorage.getItem('auth-store');
+      if (authStoreString) {
+        const authStore = JSON.parse(authStoreString);
+        return authStore?.state?.isOfflineDemo || false;
+      }
+    } catch (error) {
+      console.log('Could not check offline mode');
+    }
+    return true; // Default to offline mode for demo
   },
 
   // Load tables for current location
@@ -88,7 +96,7 @@ export const usePosStore = create((set, get) => ({
   // Create ad-hoc table
   createAdHocTable: async (locationId, name, capacity = 2) => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Create mock table for offline demo
         const newTable = {
           id: 'table-' + Date.now(),
@@ -139,7 +147,7 @@ export const usePosStore = create((set, get) => ({
   // Update table status
   updateTableStatus: async (tableId, status) => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Update mock table status
         set(state => ({
           tables: state.tables.map(table =>
@@ -244,10 +252,123 @@ export const usePosStore = create((set, get) => ({
     }
   },
 
+  // Create menu item
+  createMenuItem: async (tenantId, itemData) => {
+    try {
+      if (get().getOfflineMode()) {
+        const newItem = {
+          id: 'item-' + Date.now(),
+          tenant_id: tenantId,
+          ...itemData,
+          base_price: parseFloat(itemData.base_price),
+          is_available: true,
+          created_at: new Date()
+        };
+        
+        set(state => ({
+          menuItems: [...state.menuItems, newItem]
+        }));
+        
+        return { data: newItem };
+      }
+
+      const { data, error } = await supabase
+        .from('menu_items_pos_v1')
+        .insert({
+          tenant_id: tenantId,
+          ...itemData,
+          base_price: parseFloat(itemData.base_price)
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error creating menu item:', error);
+        return { error };
+      }
+
+      return { data };
+    } catch (error) {
+      console.error('Error in createMenuItem:', error);
+      return { error };
+    }
+  },
+
+  // Update menu item
+  updateMenuItem: async (itemId, itemData) => {
+    try {
+      if (get().getOfflineMode()) {
+        set(state => ({
+          menuItems: state.menuItems.map(item =>
+            item.id === itemId 
+              ? { ...item, ...itemData, base_price: parseFloat(itemData.base_price) }
+              : item
+          )
+        }));
+        return { data: itemData };
+      }
+
+      const { data, error } = await supabase
+        .from('menu_items_pos_v1')
+        .update({
+          ...itemData,
+          base_price: parseFloat(itemData.base_price),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', itemId)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error updating menu item:', error);
+        return { error };
+      }
+
+      return { data };
+    } catch (error) {
+      console.error('Error in updateMenuItem:', error);
+      return { error };
+    }
+  },
+
+  // Delete menu item
+  deleteMenuItem: async (itemId) => {
+    try {
+      if (get().getOfflineMode()) {
+        set(state => ({
+          menuItems: state.menuItems.filter(item => item.id !== itemId)
+        }));
+        return {};
+      }
+
+      const { error } = await supabase
+        .from('menu_items_pos_v1')
+        .delete()
+        .eq('id', itemId);
+
+      if (error) {
+        console.error('Error deleting menu item:', error);
+        return { error };
+      }
+
+      return {};
+    } catch (error) {
+      console.error('Error in deleteMenuItem:', error);
+      return { error };
+    }
+  },
+
+  // Load customers
+  loadCustomers: async (tenantId) => {
+    // This would load customers from the database
+    // For now, returning mock data
+    return [];
+  },
+
   // Create new order
   createOrder: async (locationId, tableId, orderType = 'dine-in') => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Create mock order for offline demo
         const mockOrder = {
           id: 'order-' + Date.now(),
@@ -295,7 +416,7 @@ export const usePosStore = create((set, get) => ({
   // Add item to order
   addItemToOrder: async (orderId, menuItemId, quantity = 1, modifiers = []) => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Add item to mock order
         const menuItem = mockMenuItems.find(item => item.id === menuItemId);
         if (!menuItem) return { error: { message: 'Menu item not found' } };
@@ -360,15 +481,6 @@ export const usePosStore = create((set, get) => ({
         return { error };
       }
 
-      // Update order subtotal
-      const { error: updateError } = await supabase.rpc('update_order_total', {
-        order_id: orderId
-      });
-
-      if (updateError) {
-        console.error('Error updating order total:', updateError);
-      }
-
       return { data };
     } catch (error) {
       console.error('Error in addItemToOrder:', error);
@@ -379,7 +491,7 @@ export const usePosStore = create((set, get) => ({
   // Split bill
   splitBill: async (orderId, itemIds, targetTableId) => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Mock split bill for offline demo
         console.log('Split bill (offline demo):', { orderId, itemIds, targetTableId });
         return { data: 'split-order-' + Date.now() };
@@ -406,7 +518,7 @@ export const usePosStore = create((set, get) => ({
   // Setup real-time subscriptions
   setupRealtime: (locationId) => {
     try {
-      if (get().isOfflineMode) {
+      if (get().isOfflineMode || get().getOfflineMode()) {
         // Skip real-time setup for offline demo
         console.log('Skipping real-time setup (offline demo mode)');
         return;
