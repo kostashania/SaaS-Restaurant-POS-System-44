@@ -13,18 +13,14 @@ import TableGrid from './components/pos/TableGrid';
 import OrderPanel from './components/pos/OrderPanel';
 import KitchenDisplay from './components/pos/KitchenDisplay';
 import Dashboard from './components/analytics/Dashboard';
-import MenuManagement from './components/pos/MenuManagement';
-import CustomerManagement from './components/pos/CustomerManagement';
-import StaffManagement from './components/pos/StaffManagement';
-import PaymentProcessing from './components/pos/PaymentProcessing';
-import AdvancedSettings from './components/pos/AdvancedSettings';
+import SuperAdminPanel from './components/admin/SuperAdminPanel';
 
 // Styles
 import './App.css';
 
 function App() {
   const [activeView, setActiveView] = useState('tables');
-  const { user, currentTenant, currentLocation, loading, initialize, isOfflineDemo } = useAuthStore();
+  const { user, currentTenant, currentLocation, loading, initialize, isOfflineDemo, isSuperAdmin } = useAuthStore();
   const { setupRealtime, cleanup, loadTables, loadMenu } = usePosStore();
 
   // Initialize auth on app start
@@ -68,8 +64,8 @@ function App() {
     );
   }
 
-  // No tenant/location selected
-  if (!currentTenant || !currentLocation) {
+  // No tenant/location selected (skip for superadmin)
+  if (!isSuperAdmin && (!currentTenant || !currentLocation)) {
     return (
       <Router>
         <TenantSelector />
@@ -81,6 +77,8 @@ function App() {
   // Render main POS interface
   const renderMainContent = () => {
     switch (activeView) {
+      case 'superadmin':
+        return <SuperAdminPanel />;
       case 'tables':
         return (
           <div className="flex flex-1">
@@ -95,17 +93,50 @@ function App() {
       case 'analytics':
         return <Dashboard />;
       case 'menu':
-        return <MenuManagement />;
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Menu Management</h2>
+            <p className="text-gray-600">Menu management interface coming soon...</p>
+          </div>
+        );
       case 'customers':
-        return <CustomerManagement />;
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Customer Management</h2>
+            <p className="text-gray-600">Customer management interface coming soon...</p>
+          </div>
+        );
       case 'staff':
-        return <StaffManagement />;
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Staff Management</h2>
+            <p className="text-gray-600">Staff management interface coming soon...</p>
+          </div>
+        );
       case 'payments':
-        return <PaymentProcessing />;
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Payment Processing</h2>
+            <p className="text-gray-600">Payment processing interface coming soon...</p>
+          </div>
+        );
       case 'settings':
-        return <AdvancedSettings />;
+        return (
+          <div className="p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">Settings</h2>
+            <p className="text-gray-600">Settings interface coming soon...</p>
+            {isOfflineDemo && (
+              <div className="mt-4 p-4 bg-success-50 border border-success-200 rounded-lg">
+                <h3 className="font-medium text-success-800">Offline Demo Mode</h3>
+                <p className="text-success-700 text-sm mt-1">
+                  You're running in offline demo mode. All data is simulated and changes won't be saved.
+                </p>
+              </div>
+            )}
+          </div>
+        );
       default:
-        return <TableGrid />;
+        return isSuperAdmin ? <SuperAdminPanel /> : <TableGrid />;
     }
   };
 

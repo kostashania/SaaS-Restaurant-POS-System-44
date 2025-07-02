@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase } from '../config/supabase';
+import { supabase, createSuperAdmin } from '../config/supabase';
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -9,6 +9,7 @@ export const useAuthStore = create((set, get) => ({
   locations: [],
   loading: false,
   isOfflineDemo: false,
+  isSuperAdmin: false,
 
   // Initialize auth state
   initialize: async () => {
@@ -46,8 +47,8 @@ export const useAuthStore = create((set, get) => ({
 
       if (error) {
         console.error('Error loading tenants:', error);
-        // If no staff record exists, create one
-        await get().createDemoStaff(user);
+        // Fallback to offline demo
+        await get().accessDemo();
         return;
       }
 
@@ -57,15 +58,23 @@ export const useAuthStore = create((set, get) => ({
           role: t.role,
           permissions: t.permissions
         }));
-        set({ tenants: tenantsData });
+        
+        // Check if user is superadmin
+        const isSuperAdmin = tenants.some(t => t.role === 'superadmin');
+        
+        set({ 
+          tenants: tenantsData, 
+          isSuperAdmin,
+          isOfflineDemo: false 
+        });
       } else {
-        // Create demo staff record if none exists
+        // No tenants found, create demo staff record
         await get().createDemoStaff(user);
       }
     } catch (error) {
       console.error('Error in loadUserData:', error);
-      // Try to create demo staff as fallback
-      await get().createDemoStaff(user);
+      // Fallback to offline demo
+      await get().accessDemo();
     }
   },
 
@@ -93,6 +102,8 @@ export const useAuthStore = create((set, get) => ({
 
         if (createTenantError) {
           console.error('Error creating demo tenant:', createTenantError);
+          // Fallback to offline demo
+          await get().accessDemo();
           return;
         }
         tenant = newTenant;
@@ -124,6 +135,8 @@ export const useAuthStore = create((set, get) => ({
 
           if (staffError) {
             console.error('Error creating staff record:', staffError);
+            // Fallback to offline demo
+            await get().accessDemo();
             return;
           }
         }
@@ -154,11 +167,109 @@ export const useAuthStore = create((set, get) => ({
           location = newLocation;
         }
 
+        // Create demo data
+        await get().createDemoData(tenant.id);
+
         // Reload user data
         await get().loadUserData(user);
       }
     } catch (error) {
       console.error('Error creating demo staff:', error);
+      // Fallback to offline demo
+      await get().accessDemo();
+    }
+  },
+
+  // Create demo data (menu items, tables, etc.)
+  createDemoData: async (tenantId) => {
+    try {
+      // Create menu categories
+      const { data: categories, error: catError } = await supabase
+        .from('menu_categories_pos_v1')
+        .insert([
+          { tenant_id: tenantId, name: 'Food', sort_order: 1 },
+          { tenant_id: tenantId, name: 'Drinks', sort_order: 2 }
+        ])
+        .select();
+
+      if (catError && !catError.message.includes('duplicate')) {
+        console.error('Error creating categories:', catError);
+      }
+
+      const foodCategoryId = categories?.find(c => c.name === 'Food')?.id;
+      const drinksCategoryId = categories?.find(c => c.name === 'Drinks')?.id;
+
+      // Create menu items
+      if (foodCategoryId && drinksCategoryId) {
+        const { error: menuError } = await supabase
+          .from('menu_items_pos_v1')
+          .insert([
+            {
+              tenant_id: tenantId,
+              category_id: foodCategoryId,
+              name: 'Burger Deluxe',
+              description: 'Premium beef burger with all the fixings',
+              base_price: 14.99
+            },
+            {
+              tenant_id: tenantId,
+              category_id: foodCategoryId,
+              name: 'Caesar Salad',
+              description: 'Fresh romaine with caesar dressing',
+              base_price: 12.99
+            },
+            {
+              tenant_id: tenantId,
+              category_id: foodCategoryId,
+              name: 'Fish & Chips',
+              description: 'Beer battered fish with crispy fries',
+              base_price: 16.99
+            },
+            {
+              tenant_id: tenantId,
+              category_id: drinksCategoryId,
+              name: 'Coca Cola',
+              description: 'Classic soft drink',
+              base_price: 2.99
+            },
+            {
+              tenant_id: tenantId,
+              category_id: drinksCategoryId,
+              name: 'Coffee',
+              description: 'Freshly brewed coffee',
+              base_price: 3.99
+            }
+          ]);
+
+        if (menuError && !menuError.message.includes('duplicate')) {
+          console.error('Error creating menu items:', menuError);
+        }
+      }
+
+      // Create tables for the location
+      const { data: location } = await supabase
+        .from('locations_pos_v1')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .single();
+
+      if (location) {
+        const { error: tablesError } = await supabase
+          .from('tables_pos_v1')
+          .insert([
+            { location_id: location.id, name: 'Table 1', capacity: 4 },
+            { location_id: location.id, name: 'Table 2', capacity: 2 },
+            { location_id: location.id, name: 'Table 3', capacity: 6 },
+            { location_id: location.id, name: 'Bar Seat 1', capacity: 1 },
+            { location_id: location.id, name: 'Bar Seat 2', capacity: 1 }
+          ]);
+
+        if (tablesError && !tablesError.message.includes('duplicate')) {
+          console.error('Error creating tables:', tablesError);
+        }
+      }
+    } catch (error) {
+      console.error('Error creating demo data:', error);
     }
   },
 
@@ -254,7 +365,6 @@ export const useAuthStore = create((set, get) => ({
         return { error };
       }
 
-      // Don't try to auto-sign in, just return success
       set({ loading: false });
       return { data, error: null };
     } catch (error) {
@@ -272,7 +382,7 @@ export const useAuthStore = create((set, get) => ({
       const demoCredentials = [
         { email: 'admin@restaurant.com', password: 'password123' },
         { email: 'demo@restaurant.com', password: 'password123' },
-        { email: 'test@restaurant.com', password: 'password123' }
+        { email: 'kostas@pos.eu', password: '1234567' }
       ];
 
       for (const cred of demoCredentials) {
@@ -315,16 +425,34 @@ export const useAuthStore = create((set, get) => ({
         set({ loading: false });
         return { data: signInData, error: null };
       } else {
-        // If sign-in fails due to email confirmation, provide helpful error
         set({ loading: false });
         return { 
           error: { 
-            message: 'Demo account created but email confirmation is required. Please use an existing demo account or contact support.' 
+            message: 'Demo account created but email confirmation is required. Please try the offline demo instead.' 
           } 
         };
       }
     } catch (error) {
       console.error('Demo user creation exception:', error);
+      set({ loading: false });
+      return { error };
+    }
+  },
+
+  // Setup superadmin
+  setupSuperAdmin: async () => {
+    set({ loading: true });
+    try {
+      const result = await createSuperAdmin();
+      if (result.error) {
+        console.error('Error setting up superadmin:', result.error);
+      } else {
+        console.log('Superadmin setup completed');
+      }
+      set({ loading: false });
+      return result;
+    } catch (error) {
+      console.error('Superadmin setup exception:', error);
       set({ loading: false });
       return { error };
     }
@@ -372,6 +500,7 @@ export const useAuthStore = create((set, get) => ({
         currentTenant: mockTenant,
         currentLocation: mockLocation,
         isOfflineDemo: true,
+        isSuperAdmin: false,
         loading: false
       });
       
@@ -395,7 +524,8 @@ export const useAuthStore = create((set, get) => ({
         currentLocation: null,
         tenants: [],
         locations: [],
-        isOfflineDemo: false
+        isOfflineDemo: false,
+        isSuperAdmin: false
       });
     } catch (error) {
       console.error('Sign out error:', error);

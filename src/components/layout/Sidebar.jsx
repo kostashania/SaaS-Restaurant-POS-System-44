@@ -4,13 +4,10 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { 
-  FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, 
-  FiChef, FiDollarSign, FiMenu, FiUserCheck 
-} = FiIcons;
+const { FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, FiChef, FiDollarSign, FiMenu, FiUserCheck, FiShield } = FiIcons;
 
 const Sidebar = ({ activeView, setActiveView }) => {
-  const { signOut, currentTenant, user } = useAuthStore();
+  const { signOut, currentTenant, user, isSuperAdmin } = useAuthStore();
 
   const menuItems = [
     { id: 'tables', label: 'Tables', icon: FiGrid },
@@ -23,6 +20,15 @@ const Sidebar = ({ activeView, setActiveView }) => {
     { id: 'settings', label: 'Settings', icon: FiSettings }
   ];
 
+  // Add superadmin specific menu items
+  if (isSuperAdmin) {
+    menuItems.push({
+      id: 'superadmin',
+      label: 'Super Admin',
+      icon: FiShield
+    });
+  }
+
   return (
     <div className="w-64 bg-white border-r border-gray-200 flex flex-col">
       {/* Header */}
@@ -33,7 +39,14 @@ const Sidebar = ({ activeView, setActiveView }) => {
           </div>
           <div>
             <h2 className="font-bold text-gray-900">{currentTenant?.name}</h2>
-            <p className="text-sm text-gray-600 capitalize">{currentTenant?.plan}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-600 capitalize">{currentTenant?.plan}</p>
+              {isSuperAdmin && (
+                <div className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-medium">
+                  SUPER
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -48,14 +61,17 @@ const Sidebar = ({ activeView, setActiveView }) => {
               onClick={() => setActiveView(item.id)}
               className={`
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors
-                ${activeView === item.id
-                  ? 'bg-primary-50 text-primary-600 border-r-2 border-primary-500'
+                ${activeView === item.id 
+                  ? 'bg-primary-50 text-primary-600 border-r-2 border-primary-500' 
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }
               `}
             >
               <SafeIcon icon={item.icon} className="text-lg" />
               <span className="font-medium">{item.label}</span>
+              {item.id === 'superadmin' && (
+                <SafeIcon icon={FiShield} className="text-yellow-500 text-sm ml-auto" />
+              )}
             </motion.button>
           ))}
         </div>
@@ -71,10 +87,11 @@ const Sidebar = ({ activeView, setActiveView }) => {
             <p className="text-sm font-medium text-gray-900">
               {user?.email?.split('@')[0]}
             </p>
-            <p className="text-xs text-gray-500">Staff Member</p>
+            <p className="text-xs text-gray-500">
+              {isSuperAdmin ? 'Super Admin' : currentTenant?.role || 'Staff Member'}
+            </p>
           </div>
         </div>
-        
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}

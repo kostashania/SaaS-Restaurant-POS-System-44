@@ -4,62 +4,55 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay, FiZap } = FiIcons;
+const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay, FiZap, FiSettings } = FiIcons;
 
 const LoginForm = () => {
-  const [mode, setMode] = useState('demo'); // Start with demo mode
-  const [email, setEmail] = useState('admin@restaurant.com');
-  const [password, setPassword] = useState('password123');
+  const [mode, setMode] = useState('signin'); // Default to signin for superadmin
+  const [email, setEmail] = useState('kostas@pos.eu');
+  const [password, setPassword] = useState('1234567');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  
-  const { signIn, signUp, createDemoUser, accessDemo, loading } = useAuthStore();
+  const { signIn, signUp, createDemoUser, accessDemo, setupSuperAdmin, loading } = useAuthStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setMessage('');
-    
+
     if (mode === 'signin') {
       const { error } = await signIn(email, password);
       if (error) {
-        setError(error.message || 'Invalid email or password. Try the demo mode instead.');
+        setError(error.message || 'Invalid email or password.');
       }
     } else if (mode === 'signup') {
       const { data, error } = await signUp(email, password);
       if (error) {
-        setError(error.message || 'Account creation failed. Try the demo mode instead.');
+        setError(error.message || 'Account creation failed.');
       } else {
-        setMessage('Account created! Please check your email for confirmation, or try the demo mode.');
+        setMessage('Account created! Please check your email for confirmation.');
       }
     } else if (mode === 'demo') {
-      // First try the quick demo access
       const { data, error } = await accessDemo();
       if (error) {
-        setError('Demo access failed. Please try again or contact support.');
+        setError('Demo access failed. Please try again.');
       } else if (data?.user) {
         setMessage('Demo access granted! Setting up your restaurant...');
       }
     }
   };
 
-  // Pre-existing demo accounts to try
-  const tryExistingDemo = async () => {
+  // Initialize superadmin
+  const handleSetupSuperAdmin = async () => {
     setError('');
-    setMessage('Trying existing demo accounts...');
-    
-    const { data, error } = await createDemoUser();
-    if (error) {
-      setError('All demo accounts require email confirmation. Using quick demo access instead...');
-      // Fallback to quick demo
-      setTimeout(async () => {
-        const { data: demoData, error: demoError } = await accessDemo();
-        if (demoError) {
-          setError('Demo access failed. Please contact support.');
-        }
-      }, 1000);
-    } else if (data?.user) {
-      setMessage('Demo account accessed successfully!');
+    setMessage('Setting up superadmin...');
+    const result = await setupSuperAdmin();
+    if (result.error) {
+      setError('Superadmin setup failed. Please try again.');
+    } else {
+      setMessage('Superadmin created! You can now sign in with kostas@pos.eu / 1234567');
+      setEmail('kostas@pos.eu');
+      setPassword('1234567');
+      setMode('signin');
     }
   };
 
@@ -77,7 +70,7 @@ const LoginForm = () => {
           <h1 className="text-2xl font-bold text-gray-900">SaaS POS System</h1>
           <p className="text-gray-600 mt-2">
             {mode === 'signin' ? 'Sign in to your restaurant dashboard' : 
-             mode === 'signup' ? 'Create your restaurant account' :
+             mode === 'signup' ? 'Create your restaurant account' : 
              'Try the demo restaurant instantly'}
           </p>
         </div>
@@ -160,7 +153,9 @@ const LoginForm = () => {
               </>
             ) : (
               <>
-                <SafeIcon icon={mode === 'signin' ? FiLogIn : mode === 'signup' ? FiUserPlus : FiZap} />
+                <SafeIcon icon={mode === 'signin' ? FiLogIn : 
+                              mode === 'signup' ? FiUserPlus : 
+                              FiZap} />
                 {mode === 'signin' ? 'Sign In' : 
                  mode === 'signup' ? 'Create Account' : 
                  'Quick Demo Access'}
@@ -169,60 +164,40 @@ const LoginForm = () => {
           </motion.button>
         </form>
 
-        {/* Additional Demo Options */}
-        {mode === 'demo' && (
-          <div className="mt-4">
-            <button
-              onClick={tryExistingDemo}
-              disabled={loading}
-              className="w-full bg-success-500 text-white py-2 rounded-lg font-medium hover:bg-success-600 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              <SafeIcon icon={FiPlay} />
-              Try Existing Demo Account
-            </button>
-          </div>
-        )}
+        {/* Setup Superadmin Button */}
+        <div className="mt-4">
+          <button
+            onClick={handleSetupSuperAdmin}
+            disabled={loading}
+            className="w-full bg-yellow-500 text-white py-2 rounded-lg font-medium hover:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            <SafeIcon icon={FiSettings} />
+            Setup Superadmin
+          </button>
+        </div>
 
         <div className="mt-6 space-y-2 text-center">
           <div className="flex gap-2">
             <button
-              onClick={() => {
-                setMode('demo');
-                setError('');
-                setMessage('');
-              }}
+              onClick={() => {setMode('demo'); setError(''); setMessage('');}}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === 'demo' 
-                  ? 'bg-success-100 text-success-700' 
-                  : 'text-success-600 hover:bg-success-50'
+                mode === 'demo' ? 'bg-success-100 text-success-700' : 'text-success-600 hover:bg-success-50'
               }`}
             >
               Demo
             </button>
             <button
-              onClick={() => {
-                setMode('signup');
-                setError('');
-                setMessage('');
-              }}
+              onClick={() => {setMode('signup'); setError(''); setMessage('');}}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === 'signup' 
-                  ? 'bg-primary-100 text-primary-700' 
-                  : 'text-primary-600 hover:bg-primary-50'
+                mode === 'signup' ? 'bg-primary-100 text-primary-700' : 'text-primary-600 hover:bg-primary-50'
               }`}
             >
               Sign Up
             </button>
             <button
-              onClick={() => {
-                setMode('signin');
-                setError('');
-                setMessage('');
-              }}
+              onClick={() => {setMode('signin'); setError(''); setMessage('');}}
               className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                mode === 'signin' 
-                  ? 'bg-gray-100 text-gray-700' 
-                  : 'text-gray-600 hover:bg-gray-50'
+                mode === 'signin' ? 'bg-gray-100 text-gray-700' : 'text-gray-600 hover:bg-gray-50'
               }`}
             >
               Sign In
@@ -232,31 +207,15 @@ const LoginForm = () => {
 
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium text-gray-900 mb-2">
-            {mode === 'demo' ? '🚀 Instant Demo Access' : 
-             mode === 'signup' ? '📝 Create Account' : 
-             '🔑 Existing User'}
+            🔑 Superadmin Credentials
           </h3>
-          {mode === 'demo' ? (
-            <div>
-              <p className="text-sm text-gray-600 mb-2">
-                <strong>Quick Demo Access:</strong> Bypass all authentication and jump straight into a fully functional POS system.
-              </p>
-              <p className="text-sm text-gray-600">
-                <strong>Existing Demo:</strong> Try to access pre-created demo accounts (may require email confirmation).
-              </p>
-            </div>
-          ) : mode === 'signup' ? (
-            <p className="text-sm text-gray-600">
-              Create your account. Note: Email confirmation may be required. For immediate access, try the demo mode.
+          <div className="text-sm text-gray-600 space-y-1">
+            <p><strong>Email:</strong> kostas@pos.eu</p>
+            <p><strong>Password:</strong> 1234567</p>
+            <p className="text-xs text-gray-500 mt-2">
+              Click "Setup Superadmin" to create the account, then sign in.
             </p>
-          ) : (
-            <p className="text-sm text-gray-600">
-              Sign in if you already have an account. If not, try the demo for immediate access.
-            </p>
-          )}
-          <p className="text-xs text-gray-500 mt-2">
-            Demo mode includes a complete restaurant setup with menu items, tables, and sample data.
-          </p>
+          </div>
         </div>
       </motion.div>
     </div>
