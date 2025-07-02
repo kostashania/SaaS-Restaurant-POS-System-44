@@ -1,0 +1,160 @@
+/* Custom styles for the POS system */
+
+.app-container {
+  min-height: 100vh;
+  background-color: #f9fafb;
+}
+
+/* Table grid animations */
+.table-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+
+/* Order panel styles */
+.order-panel {
+  width: 384px;
+  min-width: 384px;
+  max-width: 384px;
+}
+
+/* Kitchen display styles */
+.kitchen-order-card {
+  transition: all 0.3s ease;
+}
+
+.kitchen-order-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Custom scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #c1c1c1;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8;
+}
+
+/* Status indicators */
+.status-ready {
+  background: linear-gradient(135deg, #10b981, #059669);
+}
+
+.status-occupied {
+  background: linear-gradient(135deg, #ef4444, #dc2626);
+}
+
+.status-reserved {
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+}
+
+/* Animations */
+@keyframes pulse-success {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(16, 185, 129, 0);
+  }
+}
+
+@keyframes pulse-danger {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+  }
+}
+
+.pulse-success {
+  animation: pulse-success 2s infinite;
+}
+
+.pulse-danger {
+  animation: pulse-danger 2s infinite;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .order-panel {
+    width: 100%;
+    min-width: auto;
+    max-width: none;
+  }
+  
+  .table-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  }
+}
+
+/* Print styles for kitchen display */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .kitchen-order-card {
+    break-inside: avoid;
+    margin-bottom: 1rem;
+  }
+}
+
+/* Loading states */
+.skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Focus styles for accessibility */
+.focus-visible:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .bg-primary-500 {
+    background-color: #000;
+  }
+  
+  .text-primary-500 {
+    color: #000;
+  }
+  
+  .border-primary-500 {
+    border-color: #000;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
