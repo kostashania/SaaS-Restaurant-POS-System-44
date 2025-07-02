@@ -8,6 +8,7 @@ export const useAuthStore = create((set, get) => ({
   tenants: [],
   locations: [],
   loading: false,
+  isOfflineDemo: false,
 
   // Initialize auth state
   initialize: async () => {
@@ -168,15 +169,33 @@ export const useAuthStore = create((set, get) => ({
       set({ currentTenant: tenant });
 
       if (tenantId) {
-        const { data: locations, error } = await supabase
-          .from('locations_pos_v1')
-          .select('*')
-          .eq('tenant_id', tenantId);
-
-        if (error) {
-          console.error('Error loading locations:', error);
+        if (get().isOfflineDemo) {
+          // Use offline demo locations
+          const locations = [
+            {
+              id: 'demo-location-1',
+              tenant_id: tenantId,
+              name: 'Main Location',
+              address: {
+                street: '123 Demo Street',
+                city: 'Demo City',
+                state: 'DC',
+                zip: '12345'
+              }
+            }
+          ];
+          set({ locations });
         } else {
-          set({ locations: locations || [] });
+          const { data: locations, error } = await supabase
+            .from('locations_pos_v1')
+            .select('*')
+            .eq('tenant_id', tenantId);
+
+          if (error) {
+            console.error('Error loading locations:', error);
+          } else {
+            set({ locations: locations || [] });
+          }
         }
       } else {
         set({ currentTenant: null, locations: [], currentLocation: null });
@@ -311,7 +330,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Quick demo access (bypass all auth)
+  // Quick demo access (completely offline)
   accessDemo: async () => {
     set({ loading: true });
     try {
@@ -324,11 +343,38 @@ export const useAuthStore = create((set, get) => ({
         user_metadata: {}
       };
 
-      // Set the user and create demo data
-      set({ user: mockUser });
-      await get().createDemoStaff(mockUser);
+      // Create mock tenant and location data
+      const mockTenant = {
+        id: 'demo-tenant-' + Date.now(),
+        name: 'Demo Restaurant',
+        plan: 'pro',
+        role: 'admin',
+        permissions: ['full_access']
+      };
+
+      const mockLocation = {
+        id: 'demo-location-' + Date.now(),
+        tenant_id: mockTenant.id,
+        name: 'Main Location',
+        address: {
+          street: '123 Demo Street',
+          city: 'Demo City',
+          state: 'DC',
+          zip: '12345'
+        }
+      };
+
+      // Set everything in offline demo mode
+      set({ 
+        user: mockUser,
+        tenants: [mockTenant],
+        locations: [mockLocation],
+        currentTenant: mockTenant,
+        currentLocation: mockLocation,
+        isOfflineDemo: true,
+        loading: false
+      });
       
-      set({ loading: false });
       return { data: { user: mockUser }, error: null };
     } catch (error) {
       console.error('Demo access error:', error);
@@ -340,13 +386,16 @@ export const useAuthStore = create((set, get) => ({
   // Sign out
   signOut: async () => {
     try {
-      await supabase.auth.signOut();
+      if (!get().isOfflineDemo) {
+        await supabase.auth.signOut();
+      }
       set({
         user: null,
         currentTenant: null,
         currentLocation: null,
         tenants: [],
-        locations: []
+        locations: [],
+        isOfflineDemo: false
       });
     } catch (error) {
       console.error('Sign out error:', error);
