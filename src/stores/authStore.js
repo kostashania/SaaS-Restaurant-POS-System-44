@@ -218,20 +218,85 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Sign up new user
+  // Sign up new user with auto-confirmation
   signUp: async (email, password) => {
     set({ loading: true });
     try {
+      // First try to sign up
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: window.location.origin,
+          data: {
+            email_confirm: false // Disable email confirmation
+          }
+        }
+      });
+
+      if (error) {
+        set({ loading: false });
+        return { error };
+      }
+
+      // If user was created but needs confirmation, try to confirm automatically
+      if (data.user && !data.user.email_confirmed_at) {
+        // Try to sign in anyway (some configurations allow this)
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (!signInError && signInData.user) {
+          await get().loadUserData(signInData.user);
+          set({ loading: false });
+          return { data: signInData, error: null };
+        }
+      }
+
+      set({ loading: false });
+      return { data, error };
+    } catch (error) {
+      set({ loading: false });
+      return { error };
+    }
+  },
+
+  // Create demo user directly (for testing)
+  createDemoUser: async () => {
+    set({ loading: true });
+    try {
+      // Use a unique email for testing
+      const demoEmail = `demo_${Date.now()}@restaurant.com`;
+      const demoPassword = 'password123';
+
+      const { data, error } = await supabase.auth.signUp({
+        email: demoEmail,
+        password: demoPassword,
         options: {
           emailRedirectTo: window.location.origin
         }
       });
 
+      if (error) {
+        set({ loading: false });
+        return { error };
+      }
+
+      // Try to sign in with the demo user
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: demoEmail,
+        password: demoPassword
+      });
+
+      if (!signInError && signInData.user) {
+        await get().loadUserData(signInData.user);
+        set({ loading: false });
+        return { data: signInData, error: null };
+      }
+
       set({ loading: false });
-      return { data, error };
+      return { data, error: signInError };
     } catch (error) {
       set({ loading: false });
       return { error };
