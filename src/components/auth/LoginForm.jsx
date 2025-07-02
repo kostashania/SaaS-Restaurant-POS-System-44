@@ -30,7 +30,7 @@ const LoginForm = () => {
       if (error) {
         setError(error.message);
       } else if (data.user) {
-        setMessage('Account created successfully! Please check your email to verify your account.');
+        setMessage('Account created successfully! You can now sign in.');
         setMode('signin');
       }
     }
@@ -66,6 +66,7 @@ const LoginForm = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="Enter your email"
+                autoComplete="email"
                 required
               />
             </div>
@@ -83,6 +84,7 @@ const LoginForm = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                 placeholder="Enter your password"
+                autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 required
                 minLength={6}
               />
