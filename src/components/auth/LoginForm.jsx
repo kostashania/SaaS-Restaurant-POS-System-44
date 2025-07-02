@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay } = FiIcons;
+const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay, FiZap } = FiIcons;
 
 const LoginForm = () => {
   const [mode, setMode] = useState('demo'); // Start with demo mode
@@ -13,7 +13,7 @@ const LoginForm = () => {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   
-  const { signIn, signUp, createDemoUser, loading } = useAuthStore();
+  const { signIn, signUp, createDemoUser, accessDemo, loading } = useAuthStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -23,35 +23,43 @@ const LoginForm = () => {
     if (mode === 'signin') {
       const { error } = await signIn(email, password);
       if (error) {
-        setError(error.message || 'Invalid email or password. Try creating a demo account first.');
+        setError(error.message || 'Invalid email or password. Try the demo mode instead.');
       }
     } else if (mode === 'signup') {
       const { data, error } = await signUp(email, password);
       if (error) {
-        if (error.message.includes('email_not_confirmed') || error.message.includes('Email not confirmed')) {
-          setError('Email confirmation is required. Please check your email or try the demo account instead.');
-        } else {
-          setError(error.message);
-        }
-      } else if (data.user) {
-        setMessage('Account created successfully! Signing you in...');
-        // Auto-sign in after successful signup
-        setTimeout(async () => {
-          const { error: signInError } = await signIn(email, password);
-          if (signInError) {
-            setError('Account created but sign-in failed. Please try signing in manually.');
-            setMode('signin');
-          }
-        }, 1000);
+        setError(error.message || 'Account creation failed. Try the demo mode instead.');
+      } else {
+        setMessage('Account created! Please check your email for confirmation, or try the demo mode.');
       }
     } else if (mode === 'demo') {
-      const { data, error } = await createDemoUser();
+      // First try the quick demo access
+      const { data, error } = await accessDemo();
       if (error) {
-        setError('Failed to create demo account. Please try manual signup.');
-        setMode('signup');
+        setError('Demo access failed. Please try again or contact support.');
       } else if (data?.user) {
-        setMessage('Demo account created and signed in successfully!');
+        setMessage('Demo access granted! Setting up your restaurant...');
       }
+    }
+  };
+
+  // Pre-existing demo accounts to try
+  const tryExistingDemo = async () => {
+    setError('');
+    setMessage('Trying existing demo accounts...');
+    
+    const { data, error } = await createDemoUser();
+    if (error) {
+      setError('All demo accounts require email confirmation. Using quick demo access instead...');
+      // Fallback to quick demo
+      setTimeout(async () => {
+        const { data: demoData, error: demoError } = await accessDemo();
+        if (demoError) {
+          setError('Demo access failed. Please contact support.');
+        }
+      }, 1000);
+    } else if (data?.user) {
+      setMessage('Demo account accessed successfully!');
     }
   };
 
@@ -148,18 +156,32 @@ const LoginForm = () => {
                 <SafeIcon icon={FiLoader} className="animate-spin" />
                 {mode === 'signin' ? 'Signing In...' : 
                  mode === 'signup' ? 'Creating Account...' : 
-                 'Creating Demo...'}
+                 'Setting Up Demo...'}
               </>
             ) : (
               <>
-                <SafeIcon icon={mode === 'signin' ? FiLogIn : mode === 'signup' ? FiUserPlus : FiPlay} />
+                <SafeIcon icon={mode === 'signin' ? FiLogIn : mode === 'signup' ? FiUserPlus : FiZap} />
                 {mode === 'signin' ? 'Sign In' : 
                  mode === 'signup' ? 'Create Account' : 
-                 'Try Demo Now'}
+                 'Quick Demo Access'}
               </>
             )}
           </motion.button>
         </form>
+
+        {/* Additional Demo Options */}
+        {mode === 'demo' && (
+          <div className="mt-4">
+            <button
+              onClick={tryExistingDemo}
+              disabled={loading}
+              className="w-full bg-success-500 text-white py-2 rounded-lg font-medium hover:bg-success-600 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <SafeIcon icon={FiPlay} />
+              Try Existing Demo Account
+            </button>
+          </div>
+        )}
 
         <div className="mt-6 space-y-2 text-center">
           <div className="flex gap-2">
@@ -210,25 +232,30 @@ const LoginForm = () => {
 
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
           <h3 className="font-medium text-gray-900 mb-2">
-            {mode === 'demo' ? '🚀 Instant Demo' : 
+            {mode === 'demo' ? '🚀 Instant Demo Access' : 
              mode === 'signup' ? '📝 Create Account' : 
              '🔑 Existing User'}
           </h3>
           {mode === 'demo' ? (
-            <p className="text-sm text-gray-600">
-              Click "Try Demo Now" to instantly create and access a fully functional restaurant POS system with sample data.
-            </p>
+            <div>
+              <p className="text-sm text-gray-600 mb-2">
+                <strong>Quick Demo Access:</strong> Bypass all authentication and jump straight into a fully functional POS system.
+              </p>
+              <p className="text-sm text-gray-600">
+                <strong>Existing Demo:</strong> Try to access pre-created demo accounts (may require email confirmation).
+              </p>
+            </div>
           ) : mode === 'signup' ? (
             <p className="text-sm text-gray-600">
-              Create your account with the pre-filled credentials or use your own email to get started with a demo restaurant setup.
+              Create your account. Note: Email confirmation may be required. For immediate access, try the demo mode.
             </p>
           ) : (
             <p className="text-sm text-gray-600">
-              Sign in if you already have an account. If not, try the demo or create a new account.
+              Sign in if you already have an account. If not, try the demo for immediate access.
             </p>
           )}
           <p className="text-xs text-gray-500 mt-2">
-            All modes include a complete demo restaurant with menu items, tables, and sample data.
+            Demo mode includes a complete restaurant setup with menu items, tables, and sample data.
           </p>
         </div>
       </motion.div>

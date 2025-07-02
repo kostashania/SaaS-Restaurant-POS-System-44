@@ -202,6 +202,7 @@ export const useAuthStore = create((set, get) => ({
       });
 
       if (error) {
+        console.error('Sign in error:', error);
         set({ loading: false });
         return { error };
       }
@@ -213,77 +214,78 @@ export const useAuthStore = create((set, get) => ({
       set({ loading: false });
       return { data };
     } catch (error) {
+      console.error('Sign in exception:', error);
       set({ loading: false });
       return { error };
     }
   },
 
-  // Sign up new user with auto-confirmation
+  // Sign up new user 
   signUp: async (email, password) => {
     set({ loading: true });
     try {
-      // First try to sign up
       const { data, error } = await supabase.auth.signUp({
         email,
-        password,
-        options: {
-          emailRedirectTo: window.location.origin,
-          data: {
-            email_confirm: false // Disable email confirmation
-          }
-        }
+        password
       });
 
       if (error) {
+        console.error('Sign up error:', error);
         set({ loading: false });
         return { error };
       }
 
-      // If user was created but needs confirmation, try to confirm automatically
-      if (data.user && !data.user.email_confirmed_at) {
-        // Try to sign in anyway (some configurations allow this)
-        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-          email,
-          password
-        });
-
-        if (!signInError && signInData.user) {
-          await get().loadUserData(signInData.user);
-          set({ loading: false });
-          return { data: signInData, error: null };
-        }
-      }
-
+      // Don't try to auto-sign in, just return success
       set({ loading: false });
-      return { data, error };
+      return { data, error: null };
     } catch (error) {
+      console.error('Sign up exception:', error);
       set({ loading: false });
       return { error };
     }
   },
 
-  // Create demo user directly (for testing)
+  // Create demo user with working credentials
   createDemoUser: async () => {
     set({ loading: true });
     try {
-      // Use a unique email for testing
-      const demoEmail = `demo_${Date.now()}@restaurant.com`;
-      const demoPassword = 'password123';
+      // Try to sign in with pre-existing demo credentials first
+      const demoCredentials = [
+        { email: 'admin@restaurant.com', password: 'password123' },
+        { email: 'demo@restaurant.com', password: 'password123' },
+        { email: 'test@restaurant.com', password: 'password123' }
+      ];
 
-      const { data, error } = await supabase.auth.signUp({
-        email: demoEmail,
-        password: demoPassword,
-        options: {
-          emailRedirectTo: window.location.origin
+      for (const cred of demoCredentials) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: cred.email,
+          password: cred.password
+        });
+
+        if (!error && data.user) {
+          await get().loadUserData(data.user);
+          set({ loading: false });
+          return { data, error: null };
         }
-      });
-
-      if (error) {
-        set({ loading: false });
-        return { error };
       }
 
-      // Try to sign in with the demo user
+      // If no existing demo works, create a new one
+      const timestamp = Date.now();
+      const demoEmail = `demo_${timestamp}@restaurant.com`;
+      const demoPassword = 'password123';
+
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: demoEmail,
+        password: demoPassword
+      });
+
+      if (signUpError) {
+        console.error('Demo signup error:', signUpError);
+        set({ loading: false });
+        return { error: signUpError };
+      }
+
+      // Try to sign in immediately (works if email confirmation is disabled)
       const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
         email: demoEmail,
         password: demoPassword
@@ -293,11 +295,43 @@ export const useAuthStore = create((set, get) => ({
         await get().loadUserData(signInData.user);
         set({ loading: false });
         return { data: signInData, error: null };
+      } else {
+        // If sign-in fails due to email confirmation, provide helpful error
+        set({ loading: false });
+        return { 
+          error: { 
+            message: 'Demo account created but email confirmation is required. Please use an existing demo account or contact support.' 
+          } 
+        };
       }
-
-      set({ loading: false });
-      return { data, error: signInError };
     } catch (error) {
+      console.error('Demo user creation exception:', error);
+      set({ loading: false });
+      return { error };
+    }
+  },
+
+  // Quick demo access (bypass all auth)
+  accessDemo: async () => {
+    set({ loading: true });
+    try {
+      // Create a mock user for demo purposes
+      const mockUser = {
+        id: 'demo-user-' + Date.now(),
+        email: 'demo@restaurant.com',
+        created_at: new Date().toISOString(),
+        app_metadata: {},
+        user_metadata: {}
+      };
+
+      // Set the user and create demo data
+      set({ user: mockUser });
+      await get().createDemoStaff(mockUser);
+      
+      set({ loading: false });
+      return { data: { user: mockUser }, error: null };
+    } catch (error) {
+      console.error('Demo access error:', error);
       set({ loading: false });
       return { error };
     }
