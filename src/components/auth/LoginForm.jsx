@@ -7,7 +7,7 @@ import * as FiIcons from 'react-icons/fi';
 const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus } = FiIcons;
 
 const LoginForm = () => {
-  const [mode, setMode] = useState('signin'); // 'signin' or 'signup'
+  const [mode, setMode] = useState('signup'); // Start with signup since no demo user exists
   const [email, setEmail] = useState('admin@restaurant.com');
   const [password, setPassword] = useState('password123');
   const [error, setError] = useState('');
@@ -23,15 +23,22 @@ const LoginForm = () => {
     if (mode === 'signin') {
       const { error } = await signIn(email, password);
       if (error) {
-        setError(error.message);
+        setError(error.message || 'Invalid email or password. Try creating an account first.');
       }
     } else {
       const { data, error } = await signUp(email, password);
       if (error) {
         setError(error.message);
       } else if (data.user) {
-        setMessage('Account created successfully! You can now sign in.');
-        setMode('signin');
+        setMessage('Account created successfully! Signing you in...');
+        // Auto-sign in after successful signup
+        setTimeout(async () => {
+          const { error: signInError } = await signIn(email, password);
+          if (signInError) {
+            setError('Account created but sign-in failed. Please try signing in manually.');
+            setMode('signin');
+          }
+        }, 1000);
       }
     }
   };
@@ -126,7 +133,7 @@ const LoginForm = () => {
             ) : (
               <>
                 <SafeIcon icon={mode === 'signin' ? FiLogIn : FiUserPlus} />
-                {mode === 'signin' ? 'Sign In' : 'Create Account'}
+                {mode === 'signin' ? 'Sign In' : 'Create Account & Start'}
               </>
             )}
           </motion.button>
@@ -148,18 +155,23 @@ const LoginForm = () => {
           </button>
         </div>
 
-        {mode === 'signin' && (
-          <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-            <h3 className="font-medium text-gray-900 mb-2">Demo Credentials</h3>
+        <div className="mt-8 p-4 bg-gray-50 rounded-lg">
+          <h3 className="font-medium text-gray-900 mb-2">
+            {mode === 'signup' ? 'Quick Start' : 'Demo Account'}
+          </h3>
+          {mode === 'signup' ? (
             <p className="text-sm text-gray-600">
-              Email: admin@restaurant.com<br />
-              Password: password123
+              Create your account with the pre-filled credentials to get started immediately with a demo restaurant setup!
             </p>
-            <p className="text-xs text-gray-500 mt-2">
-              Or create a new account to get started with your own restaurant!
+          ) : (
+            <p className="text-sm text-gray-600">
+              Use the email and password above, or create a new account if you haven't already.
             </p>
-          </div>
-        )}
+          )}
+          <p className="text-xs text-gray-500 mt-2">
+            Your account will automatically include a demo restaurant with sample menu items and tables.
+          </p>
+        </div>
       </motion.div>
     </div>
   );
