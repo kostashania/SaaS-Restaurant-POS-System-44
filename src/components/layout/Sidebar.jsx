@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, FiChef, FiDollarSign, FiMenu, FiUserCheck, FiShield } = FiIcons;
+const { FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, FiChef, FiDollarSign, FiMenu, FiUserCheck, FiShield, FiTrendingUp, FiTag, FiLayers } = FiIcons;
 
 const Sidebar = ({ activeView, setActiveView }) => {
   const { signOut, currentTenant, user, isSuperAdmin } = useAuthStore();
@@ -17,6 +17,9 @@ const Sidebar = ({ activeView, setActiveView }) => {
     { id: 'customers', label: 'Customers', icon: FiUsers },
     { id: 'staff', label: 'Staff', icon: FiUserCheck },
     { id: 'payments', label: 'Payments', icon: FiDollarSign },
+    { id: 'finance', label: 'Finance', icon: FiTrendingUp },
+    { id: 'transactions', label: 'Transactions', icon: FiLayers },
+    { id: 'categories', label: 'Categories', icon: FiTag },
     { id: 'settings', label: 'Settings', icon: FiSettings }
   ];
 
@@ -61,8 +64,8 @@ const Sidebar = ({ activeView, setActiveView }) => {
               onClick={() => setActiveView(item.id)}
               className={`
                 w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors
-                ${activeView === item.id 
-                  ? 'bg-primary-50 text-primary-600 border-r-2 border-primary-500' 
+                ${activeView === item.id
+                  ? 'bg-primary-50 text-primary-600 border-r-2 border-primary-500'
                   : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                 }
               `}

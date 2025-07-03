@@ -3,13 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { usePosStore } from '../../stores/posStore';
 import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
+import MenuVariants from './MenuVariants';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiPlus, FiEdit3, FiTrash2, FiPackage, FiDollarSign, FiTag, FiImage, FiSave, FiX } = FiIcons;
+const { FiPlus, FiEdit3, FiTrash2, FiPackage, FiDollarSign, FiTag, FiImage, FiSave, FiX, FiLayers } = FiIcons;
 
 const MenuManagement = () => {
   const [activeTab, setActiveTab] = useState('items');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showVariantsModal, setShowVariantsModal] = useState(false);
+  const [selectedMenuItem, setSelectedMenuItem] = useState(null);
   const [editingItem, setEditingItem] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
@@ -30,13 +33,13 @@ const MenuManagement = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (editingItem) {
       await updateMenuItem(editingItem.id, formData);
     } else {
       await createMenuItem(currentTenant.id, formData);
     }
-    
+
     resetForm();
     loadMenu(currentTenant.id);
   };
@@ -72,6 +75,11 @@ const MenuManagement = () => {
     }
   };
 
+  const handleShowVariants = (item) => {
+    setSelectedMenuItem(item);
+    setShowVariantsModal(true);
+  };
+
   const MenuItem = ({ item }) => (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -80,7 +88,14 @@ const MenuManagement = () => {
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex-1">
-          <h3 className="text-lg font-bold text-gray-900 mb-1">{item.name}</h3>
+          <div className="flex items-center gap-2 mb-2">
+            <h3 className="text-lg font-bold text-gray-900">{item.name}</h3>
+            {item.has_variants && (
+              <span className="bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-medium">
+                Variants
+              </span>
+            )}
+          </div>
           <p className="text-gray-600 text-sm mb-2">{item.description}</p>
           <div className="flex items-center gap-2">
             <span className="text-2xl font-bold text-primary-600">${item.base_price}</span>
@@ -92,6 +107,13 @@ const MenuManagement = () => {
           </div>
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => handleShowVariants(item)}
+            className="p-2 text-gray-500 hover:text-purple-500 hover:bg-purple-50 rounded-lg"
+            title="Manage Variants"
+          >
+            <SafeIcon icon={FiLayers} />
+          </button>
           <button
             onClick={() => handleEdit(item)}
             className="p-2 text-gray-500 hover:text-primary-500 hover:bg-primary-50 rounded-lg"
@@ -106,20 +128,23 @@ const MenuManagement = () => {
           </button>
         </div>
       </div>
-      
+
       {item.modifiers && item.modifiers.length > 0 && (
         <div className="border-t pt-3">
           <p className="text-sm font-medium text-gray-700 mb-2">Available Modifiers:</p>
           <div className="flex flex-wrap gap-1">
             {item.modifiers.map((modifier, index) => (
-              <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs">
+              <span
+                key={index}
+                className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs"
+              >
                 {modifier}
               </span>
             ))}
           </div>
         </div>
       )}
-      
+
       <div className="flex items-center justify-between mt-4 pt-3 border-t">
         <span className={`px-2 py-1 rounded text-xs font-medium ${
           item.is_available 
@@ -149,7 +174,6 @@ const MenuManagement = () => {
           Add Category
         </button>
       </div>
-      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {categories.map((category) => (
           <motion.div
@@ -177,7 +201,7 @@ const MenuManagement = () => {
     <div className="p-6 bg-gray-50 min-h-screen">
       <div className="mb-6">
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Menu Management</h1>
-        <p className="text-gray-600">Manage your restaurant's menu items and categories</p>
+        <p className="text-gray-600">Manage your restaurant's menu items, variants, and categories</p>
       </div>
 
       {/* Tabs */}
@@ -185,8 +209,8 @@ const MenuManagement = () => {
         <button
           onClick={() => setActiveTab('items')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'items'
-              ? 'bg-white text-primary-600 shadow-sm'
+            activeTab === 'items' 
+              ? 'bg-white text-primary-600 shadow-sm' 
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -195,8 +219,8 @@ const MenuManagement = () => {
         <button
           onClick={() => setActiveTab('categories')}
           className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            activeTab === 'categories'
-              ? 'bg-white text-primary-600 shadow-sm'
+            activeTab === 'categories' 
+              ? 'bg-white text-primary-600 shadow-sm' 
               : 'text-gray-600 hover:text-gray-900'
           }`}
         >
@@ -268,10 +292,7 @@ const MenuManagement = () => {
                 <h3 className="text-xl font-bold text-gray-900">
                   {editingItem ? 'Edit Menu Item' : 'Add Menu Item'}
                 </h3>
-                <button
-                  onClick={resetForm}
-                  className="text-gray-400 hover:text-gray-600"
-                >
+                <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
                   <SafeIcon icon={FiX} />
                 </button>
               </div>
@@ -306,7 +327,7 @@ const MenuManagement = () => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Price *
+                    Base Price *
                   </label>
                   <div className="relative">
                     <SafeIcon icon={FiDollarSign} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
@@ -360,6 +381,22 @@ const MenuManagement = () => {
               </form>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Variants Modal */}
+      <AnimatePresence>
+        {showVariantsModal && selectedMenuItem && (
+          <MenuVariants
+            menuItem={selectedMenuItem}
+            onClose={() => {
+              setShowVariantsModal(false);
+              setSelectedMenuItem(null);
+            }}
+            onUpdate={() => {
+              loadMenu(currentTenant.id);
+            }}
+          />
         )}
       </AnimatePresence>
     </div>

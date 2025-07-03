@@ -7,7 +7,7 @@ import * as FiIcons from 'react-icons/fi';
 const { FiBuilding, FiMapPin, FiArrowRight, FiCrown, FiStar, FiZap, FiLoader } = FiIcons;
 
 const TenantSelector = () => {
-  const { tenants, locations, currentTenant, selectTenant, selectLocation, user, loading } = useAuthStore();
+  const { tenants, locations, currentTenant, selectTenant, selectLocation, user, loading, isSuperAdmin } = useAuthStore();
 
   const getPlanIcon = (plan) => {
     switch (plan) {
@@ -24,6 +24,11 @@ const TenantSelector = () => {
       default: return 'text-blue-500';
     }
   };
+
+  // Skip tenant/location selection for superadmin
+  if (isSuperAdmin) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -84,9 +89,11 @@ const TenantSelector = () => {
                       </span>
                     </div>
                   </div>
+
                   <h3 className="text-xl font-bold text-gray-900 mb-2">
                     {tenant.name}
                   </h3>
+
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-gray-500">
                       Role: {tenant.role}
@@ -146,14 +153,17 @@ const TenantSelector = () => {
                     <div className="bg-success-100 w-12 h-12 rounded-full flex items-center justify-center mb-4">
                       <SafeIcon icon={FiMapPin} className="text-success-600 text-xl" />
                     </div>
+
                     <h3 className="text-xl font-bold text-gray-900 mb-2">
                       {location.name || 'Main Location'}
                     </h3>
+
                     {location.address && (
                       <p className="text-gray-600 text-sm mb-4">
                         {location.address.street}, {location.address.city}
                       </p>
                     )}
+
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-gray-500">
                         Ready to use

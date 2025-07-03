@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { supabase, createSuperAdmin } from '../config/supabase';
+import { supabase } from '../config/supabase';
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -67,6 +67,17 @@ export const useAuthStore = create((set, get) => ({
           isSuperAdmin,
           isOfflineDemo: false 
         });
+
+        // If superadmin, auto-select system tenant and skip location requirement
+        if (isSuperAdmin) {
+          const systemTenant = tenantsData.find(t => t.name === 'System Administration');
+          if (systemTenant) {
+            set({ 
+              currentTenant: systemTenant,
+              currentLocation: { id: 'system', name: 'System Administration' }
+            });
+          }
+        }
       } else {
         // No tenants found, create demo staff record
         await get().createDemoStaff(user);
@@ -374,83 +385,72 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Create demo user with working credentials
-  createDemoUser: async () => {
-    set({ loading: true });
-    try {
-      // Try to sign in with pre-existing demo credentials first
-      const demoCredentials = [
-        { email: 'admin@restaurant.com', password: 'password123' },
-        { email: 'demo@restaurant.com', password: 'password123' },
-        { email: 'kostas@pos.eu', password: '1234567' }
-      ];
-
-      for (const cred of demoCredentials) {
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: cred.email,
-          password: cred.password
-        });
-
-        if (!error && data.user) {
-          await get().loadUserData(data.user);
-          set({ loading: false });
-          return { data, error: null };
-        }
-      }
-
-      // If no existing demo works, create a new one
-      const timestamp = Date.now();
-      const demoEmail = `demo_${timestamp}@restaurant.com`;
-      const demoPassword = 'password123';
-
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: demoEmail,
-        password: demoPassword
-      });
-
-      if (signUpError) {
-        console.error('Demo signup error:', signUpError);
-        set({ loading: false });
-        return { error: signUpError };
-      }
-
-      // Try to sign in immediately (works if email confirmation is disabled)
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: demoEmail,
-        password: demoPassword
-      });
-
-      if (!signInError && signInData.user) {
-        await get().loadUserData(signInData.user);
-        set({ loading: false });
-        return { data: signInData, error: null };
-      } else {
-        set({ loading: false });
-        return { 
-          error: { 
-            message: 'Demo account created but email confirmation is required. Please try the offline demo instead.' 
-          } 
-        };
-      }
-    } catch (error) {
-      console.error('Demo user creation exception:', error);
-      set({ loading: false });
-      return { error };
-    }
-  },
-
-  // Setup superadmin
+  // Setup superadmin - this actually creates the user and staff record
   setupSuperAdmin: async () => {
     set({ loading: true });
     try {
-      const result = await createSuperAdmin();
-      if (result.error) {
-        console.error('Error setting up superadmin:', result.error);
-      } else {
-        console.log('Superadmin setup completed');
+      console.log('Setting up superadmin...');
+      
+      // First try to sign up the user
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email: 'kostas@pos.eu',
+        password: '1234567'
+      });
+
+      if (authError && !authError.message.includes('already registered')) {
+        console.error('Auth error:', authError);
+        set({ loading: false });
+        return { error: authError };
       }
+
+      // Get the system tenant
+      const { data: systemTenant, error: tenantError } = await supabase
+        .from('tenants_pos_v1')
+        .select('*')
+        .eq('name', 'System Administration')
+        .single();
+
+      if (tenantError || !systemTenant) {
+        console.error('System tenant not found:', tenantError);
+        set({ loading: false });
+        return { error: { message: 'System tenant not found' } };
+      }
+
+      // Create or update staff record for superadmin
+      const userId = authData?.user?.id;
+      if (userId) {
+        // Check if staff record exists
+        const { data: existingStaff } = await supabase
+          .from('staff_pos_v1')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('role', 'superadmin')
+          .single();
+
+        if (!existingStaff) {
+          const { data: staff, error: staffError } = await supabase
+            .from('staff_pos_v1')
+            .insert({
+              tenant_id: systemTenant.id,
+              user_id: userId,
+              email: 'kostas@pos.eu',
+              role: 'superadmin',
+              permissions: ['full_access', 'superadmin', 'tenant_management'],
+              is_active: true
+            })
+            .select()
+            .single();
+
+          if (staffError) {
+            console.error('Error creating superadmin staff record:', staffError);
+            set({ loading: false });
+            return { error: staffError };
+          }
+        }
+      }
+
       set({ loading: false });
-      return result;
+      return { data: 'Superadmin created successfully' };
     } catch (error) {
       console.error('Superadmin setup exception:', error);
       set({ loading: false });

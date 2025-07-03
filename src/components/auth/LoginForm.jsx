@@ -4,7 +4,7 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay, FiZap, FiSettings } = FiIcons;
+const { FiUser, FiLock, FiLogIn, FiLoader, FiUserPlus, FiPlay, FiZap, FiSettings, FiShield } = FiIcons;
 
 const LoginForm = () => {
   const [mode, setMode] = useState('signin'); // Default to signin for superadmin
@@ -12,7 +12,7 @@ const LoginForm = () => {
   const [password, setPassword] = useState('1234567');
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const { signIn, signUp, createDemoUser, accessDemo, setupSuperAdmin, loading } = useAuthStore();
+  const { signIn, signUp, setupSuperAdmin, accessDemo, loading } = useAuthStore();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -49,7 +49,7 @@ const LoginForm = () => {
     if (result.error) {
       setError('Superadmin setup failed. Please try again.');
     } else {
-      setMessage('Superadmin created! You can now sign in with kostas@pos.eu / 1234567');
+      setMessage('✅ Superadmin created! You can now sign in with kostas@pos.eu / 1234567');
       setEmail('kostas@pos.eu');
       setPassword('1234567');
       setMode('signin');
@@ -171,8 +171,8 @@ const LoginForm = () => {
             disabled={loading}
             className="w-full bg-yellow-500 text-white py-2 rounded-lg font-medium hover:bg-yellow-600 disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            <SafeIcon icon={FiSettings} />
-            Setup Superadmin
+            <SafeIcon icon={FiShield} />
+            🚀 Setup Superadmin
           </button>
         </div>
 
@@ -206,14 +206,15 @@ const LoginForm = () => {
         </div>
 
         <div className="mt-8 p-4 bg-gray-50 rounded-lg">
-          <h3 className="font-medium text-gray-900 mb-2">
+          <h3 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+            <SafeIcon icon={FiShield} className="text-yellow-500" />
             🔑 Superadmin Credentials
           </h3>
           <div className="text-sm text-gray-600 space-y-1">
             <p><strong>Email:</strong> kostas@pos.eu</p>
             <p><strong>Password:</strong> 1234567</p>
             <p className="text-xs text-gray-500 mt-2">
-              Click "Setup Superadmin" to create the account, then sign in.
+              ⚡ Click "🚀 Setup Superadmin" first, then sign in with these credentials.
             </p>
           </div>
         </div>
