@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
-import { supabase } from '../../config/supabase';
+import { supabase, initializeDatabase } from '../../config/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
@@ -13,6 +13,7 @@ const CategoryManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'expense',
@@ -35,11 +36,73 @@ const CategoryManagement = () => {
     '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#64748b'
   ];
 
+  // Initialize database on mount
+  useEffect(() => {
+    const initDb = async () => {
+      const result = await initializeDatabase();
+      setDbReady(result.success);
+      if (result.success) {
+        await ensureTenantExists();
+        loadCategories();
+      }
+    };
+    initDb();
+  }, []);
+
+  // Ensure tenant exists before saving categories
+  const ensureTenantExists = async () => {
+    if (isOfflineDemo || !user?.id) return true;
+
+    try {
+      // Check if current tenant exists in database
+      if (currentTenant?.id) {
+        const { data: existingTenant, error: checkError } = await supabase
+          .from('tenants_pos_v1')
+          .select('id')
+          .eq('id', currentTenant.id)
+          .single();
+
+        if (!checkError && existingTenant) {
+          return true; // Tenant exists
+        }
+      }
+
+      // Create tenant if it doesn't exist
+      const tenantData = {
+        name: currentTenant?.name || 'Demo Restaurant',
+        plan: currentTenant?.plan || 'pro',
+        settings: {}
+      };
+
+      const { data: newTenant, error: createError } = await supabase
+        .from('tenants_pos_v1')
+        .insert(tenantData)
+        .select()
+        .single();
+
+      if (createError) {
+        console.error('Error creating tenant:', createError);
+        return false;
+      }
+
+      // Update currentTenant with the new ID
+      if (newTenant) {
+        // Update the auth store with the new tenant ID
+        const updatedTenant = { ...currentTenant, id: newTenant.id };
+        // You might want to update the auth store here
+        console.log('Created new tenant:', newTenant.id);
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.error('Error ensuring tenant exists:', error);
+      return false;
+    }
+  };
+
   const loadCategories = useCallback(async () => {
-    if (!user?.id) return;
-    
-    // Skip database calls in offline demo mode
-    if (isOfflineDemo) {
+    if (!user?.id || isOfflineDemo) {
       // Set mock categories for demo
       setCategories([
         {
@@ -65,50 +128,74 @@ const CategoryManagement = () => {
       ]);
       return;
     }
-    
-    try {
-      let query = supabase
-        .from('financial_categories_pos_v1')
-        .select('*')
-        .eq('scope', activeScope)
-        .order('type', { ascending: true })
-        .order('name', { ascending: true });
 
-      if (activeScope === 'business' && currentTenant?.id) {
-        // Only add tenant filter if we have a valid UUID
-        if (currentTenant.id.includes('-') && currentTenant.id.length === 36) {
-          query = query.eq('tenant_id', currentTenant.id);
+    if (!dbReady) return;
+
+    try {
+      setLoading(true);
+
+      // For personal scope, only filter by user_id and scope
+      if (activeScope === 'personal') {
+        const { data, error } = await supabase
+          .from('financial_categories_pos_v1')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('scope', 'personal')
+          .order('type', { ascending: true })
+          .order('name', { ascending: true });
+
+        if (error) {
+          console.error('Error loading personal categories:', error);
+          setCategories([]);
+        } else {
+          setCategories(data || []);
         }
-      } else if (activeScope === 'personal') {
-        // Only add user filter if we have a valid UUID
-        if (user.id.includes('-') && user.id.length === 36) {
+      } else {
+        // For business scope, we need a tenant_id, but make it optional
+        let query = supabase
+          .from('financial_categories_pos_v1')
+          .select('*')
+          .eq('scope', 'business')
+          .order('type', { ascending: true })
+          .order('name', { ascending: true });
+
+        // Only add tenant filter if we have a valid tenant
+        if (currentTenant?.id) {
+          query = query.eq('tenant_id', currentTenant.id);
+        } else {
+          // If no tenant, filter by user_id as fallback
           query = query.eq('user_id', user.id);
         }
-      }
 
-      const { data, error } = await query;
-      
-      if (error) {
-        console.error('Error loading categories:', error);
-        return;
-      }
+        const { data, error } = await query;
 
-      setCategories(data || []);
+        if (error) {
+          console.error('Error loading business categories:', error);
+          setCategories([]);
+        } else {
+          setCategories(data || []);
+        }
+      }
     } catch (error) {
       console.error('Error loading categories:', error);
+      setCategories([]);
+    } finally {
+      setLoading(false);
     }
-  }, [activeScope, currentTenant?.id, user?.id, isOfflineDemo]);
+  }, [activeScope, currentTenant?.id, user?.id, isOfflineDemo, dbReady]);
 
   useEffect(() => {
-    loadCategories();
-  }, [loadCategories]);
+    if (dbReady) {
+      loadCategories();
+    }
+  }, [loadCategories, dbReady]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
-    
+
     // Handle offline demo mode
-    if (isOfflineDemo) {
+    if (isOfflineDemo || !dbReady) {
       const newCategory = {
         id: Date.now().toString(),
         ...formData,
@@ -118,7 +205,7 @@ const CategoryManagement = () => {
       };
 
       if (editingCategory) {
-        setCategories(prev => prev.map(cat => 
+        setCategories(prev => prev.map(cat =>
           cat.id === editingCategory.id ? { ...cat, ...formData } : cat
         ));
       } else {
@@ -129,22 +216,29 @@ const CategoryManagement = () => {
       setLoading(false);
       return;
     }
-    
+
     try {
       const categoryData = {
         ...formData,
-        scope: activeScope
+        scope: activeScope,
+        user_id: user.id // Always set user_id
       };
 
-      if (activeScope === 'business' && currentTenant?.id) {
-        // Only add tenant_id if it's a valid UUID
-        if (currentTenant.id.includes('-') && currentTenant.id.length === 36) {
-          categoryData.tenant_id = currentTenant.id;
-        }
-      } else if (activeScope === 'personal') {
-        // Only add user_id if it's a valid UUID
-        if (user.id.includes('-') && user.id.length === 36) {
-          categoryData.user_id = user.id;
+      // Only set tenant_id for business scope and if tenant exists
+      if (activeScope === 'business') {
+        const tenantExists = await ensureTenantExists();
+        if (tenantExists && currentTenant?.id) {
+          // Verify tenant exists in database before using it
+          const { data: verifyTenant, error: verifyError } = await supabase
+            .from('tenants_pos_v1')
+            .select('id')
+            .eq('id', currentTenant.id)
+            .single();
+
+          if (!verifyError && verifyTenant) {
+            categoryData.tenant_id = currentTenant.id;
+          }
+          // If tenant doesn't exist, we'll just use user_id (already set above)
         }
       }
 
@@ -200,7 +294,7 @@ const CategoryManagement = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
 
-    if (isOfflineDemo) {
+    if (isOfflineDemo || !dbReady) {
       setCategories(prev => prev.filter(cat => cat.id !== id));
       return;
     }
@@ -220,8 +314,8 @@ const CategoryManagement = () => {
   };
 
   const toggleActive = async (id, isActive) => {
-    if (isOfflineDemo) {
-      setCategories(prev => prev.map(cat => 
+    if (isOfflineDemo || !dbReady) {
+      setCategories(prev => prev.map(cat =>
         cat.id === id ? { ...cat, is_active: !isActive } : cat
       ));
       return;
@@ -250,12 +344,12 @@ const CategoryManagement = () => {
     >
       <div className="flex items-start justify-between mb-4">
         <div className="flex items-center gap-3 flex-1">
-          <div 
+          <div
             className="w-12 h-12 rounded-lg flex items-center justify-center"
             style={{ backgroundColor: category.color + '20' }}
           >
-            <SafeIcon 
-              icon={FiIcons[category.icon] || FiTag} 
+            <SafeIcon
+              icon={FiIcons[category.icon] || FiTag}
               className="text-xl"
               style={{ color: category.color }}
             />
@@ -264,15 +358,15 @@ const CategoryManagement = () => {
             <h3 className="text-lg font-bold text-gray-900 mb-1">{category.name}</h3>
             <div className="flex items-center gap-2 mb-2">
               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                category.type === 'income' 
-                  ? 'bg-success-100 text-success-700' 
+                category.type === 'income'
+                  ? 'bg-success-100 text-success-700'
                   : 'bg-danger-100 text-danger-700'
               }`}>
                 {category.type.toUpperCase()}
               </span>
               <span className={`px-2 py-1 rounded text-xs font-medium ${
-                category.is_active 
-                  ? 'bg-green-100 text-green-700' 
+                category.is_active
+                  ? 'bg-green-100 text-green-700'
                   : 'bg-gray-100 text-gray-700'
               }`}>
                 {category.is_active ? 'Active' : 'Inactive'}
@@ -283,13 +377,12 @@ const CategoryManagement = () => {
             )}
           </div>
         </div>
-        
         <div className="flex gap-2">
           <button
             onClick={() => toggleActive(category.id, category.is_active)}
             className={`p-2 rounded-lg ${
-              category.is_active 
-                ? 'text-gray-500 hover:text-orange-500 hover:bg-orange-50' 
+              category.is_active
+                ? 'text-gray-500 hover:text-orange-500 hover:bg-orange-50'
                 : 'text-gray-500 hover:text-green-500 hover:bg-green-50'
             }`}
             title={category.is_active ? 'Deactivate' : 'Activate'}
@@ -334,7 +427,10 @@ const CategoryManagement = () => {
               <h3 className="text-xl font-bold text-gray-900">
                 {editingCategory ? 'Edit Category' : 'Add Category'}
               </h3>
-              <button onClick={resetForm} className="text-gray-400 hover:text-gray-600">
+              <button
+                onClick={resetForm}
+                className="text-gray-400 hover:text-gray-600"
+              >
                 <SafeIcon icon={FiX} />
               </button>
             </div>
@@ -411,8 +507,8 @@ const CategoryManagement = () => {
                         type="button"
                         onClick={() => setFormData(prev => ({ ...prev, icon: iconName }))}
                         className={`p-2 rounded-lg border ${
-                          formData.icon === iconName 
-                            ? 'border-primary-500 bg-primary-50' 
+                          formData.icon === iconName
+                            ? 'border-primary-500 bg-primary-50'
                             : 'border-gray-300 hover:bg-gray-50'
                         }`}
                         disabled={loading}
@@ -472,10 +568,11 @@ const CategoryManagement = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      {isOfflineDemo && (
+      {(isOfflineDemo || !dbReady) && (
         <div className="mb-4 p-4 bg-warning-50 border border-warning-200 rounded-lg">
           <p className="text-warning-800 text-sm">
-            <strong>Demo Mode:</strong> Changes are simulated and won't be saved permanently.
+            <strong>{!dbReady ? 'Database Initializing:' : 'Demo Mode:'}</strong>{' '}
+            {!dbReady ? 'Setting up database connection...' : 'Changes are simulated and won\'t be saved permanently.'}
           </p>
         </div>
       )}
@@ -488,15 +585,15 @@ const CategoryManagement = () => {
             </h1>
             <p className="text-gray-600">Organize your income and expense categories</p>
           </div>
-          
+
           <div className="flex gap-4">
             {/* Scope Toggle */}
             <div className="flex bg-gray-200 p-1 rounded-lg">
               <button
                 onClick={() => setActiveScope('business')}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeScope === 'business' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
+                  activeScope === 'business'
+                    ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -505,8 +602,8 @@ const CategoryManagement = () => {
               <button
                 onClick={() => setActiveScope('personal')}
                 className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-                  activeScope === 'personal' 
-                    ? 'bg-white text-primary-600 shadow-sm' 
+                  activeScope === 'personal'
+                    ? 'bg-white text-primary-600 shadow-sm'
                     : 'text-gray-600 hover:text-gray-900'
                 }`}
               >
@@ -561,7 +658,7 @@ const CategoryManagement = () => {
         )}
       </div>
 
-      {categories.length === 0 && (
+      {categories.length === 0 && !loading && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

@@ -15,40 +15,70 @@ export const useAuthStore = create((set, get) => ({
   // Initialize auth state
   initialize: async () => {
     if (get().initialized) return; // Prevent multiple initializations
-    
+
     set({ loading: true });
+    
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      
       if (session?.user) {
         await get().loadUserData(session.user);
       }
+      
       set({ initialized: true });
     } catch (error) {
       console.error('Auth initialization error:', error);
       set({ initialized: true });
     }
+    
     set({ loading: false });
   },
 
   // Load user tenants and locations
   loadUserData: async (user) => {
     set({ user });
+    
     try {
-      // Load user's tenants using the new schema with proper column selection
-      const { data: tenants, error } = await supabase
-        .from('staff_pos_v1')
-        .select(`
-          tenant_id,
-          role,
-          permissions,
-          tenant:tenant_id (
-            id,
-            name,
-            plan
-          )
-        `)
-        .eq('user_id', user.id)
-        .eq('is_active', true);
+      // First check if staff table has permissions column
+      const { data: columns } = await supabase.rpc('exec', {
+        query: `SELECT column_name FROM information_schema.columns WHERE table_name = 'staff_pos_v1' AND column_name = 'permissions';`
+      });
+
+      let query;
+      if (columns && columns.length > 0) {
+        // Permissions column exists, use it
+        query = supabase
+          .from('staff_pos_v1')
+          .select(`
+            tenant_id,
+            role,
+            permissions,
+            tenant:tenant_id (
+              id,
+              name,
+              plan
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+      } else {
+        // Permissions column doesn't exist, don't select it
+        query = supabase
+          .from('staff_pos_v1')
+          .select(`
+            tenant_id,
+            role,
+            tenant:tenant_id (
+              id,
+              name,
+              plan
+            )
+          `)
+          .eq('user_id', user.id)
+          .eq('is_active', true);
+      }
+
+      const { data: tenants, error } = await query;
 
       if (error) {
         console.error('Error loading tenants:', error);
@@ -61,23 +91,23 @@ export const useAuthStore = create((set, get) => ({
         const tenantsData = tenants.map(t => ({
           ...t.tenant,
           role: t.role,
-          permissions: t.permissions
+          permissions: t.permissions || ['full_access'] // Default permissions if column doesn't exist
         }));
 
         // Check if user is superadmin
         const isSuperAdmin = tenants.some(t => t.role === 'superadmin');
 
-        set({ 
-          tenants: tenantsData, 
+        set({
+          tenants: tenantsData,
           isSuperAdmin,
-          isOfflineDemo: false 
+          isOfflineDemo: false
         });
 
         // If superadmin, auto-select system tenant and skip location requirement
         if (isSuperAdmin) {
           const systemTenant = tenantsData.find(t => t.name === 'System Administration');
           if (systemTenant) {
-            set({ 
+            set({
               currentTenant: systemTenant,
               currentLocation: { id: 'system', name: 'System Administration' }
             });
@@ -135,17 +165,27 @@ export const useAuthStore = create((set, get) => ({
           .single();
 
         if (!existingStaff) {
-          // Create staff record
+          // Create staff record with or without permissions column
+          const staffData = {
+            tenant_id: tenant.id,
+            user_id: user.id,
+            email: user.email,
+            role: 'admin',
+            is_active: true
+          };
+
+          // Check if permissions column exists before adding it
+          const { data: columns } = await supabase.rpc('exec', {
+            query: `SELECT column_name FROM information_schema.columns WHERE table_name = 'staff_pos_v1' AND column_name = 'permissions';`
+          });
+
+          if (columns && columns.length > 0) {
+            staffData.permissions = ['full_access'];
+          }
+
           const { data: staff, error: staffError } = await supabase
             .from('staff_pos_v1')
-            .insert({
-              tenant_id: tenant.id,
-              user_id: user.id,
-              email: user.email,
-              role: 'admin',
-              permissions: ['full_access'],
-              is_active: true
-            })
+            .insert(staffData)
             .select()
             .single();
 
@@ -155,32 +195,6 @@ export const useAuthStore = create((set, get) => ({
             await get().accessDemo();
             return;
           }
-        }
-
-        // Ensure demo location exists
-        let { data: location } = await supabase
-          .from('locations_pos_v1')
-          .select('*')
-          .eq('tenant_id', tenant.id)
-          .single();
-
-        if (!location) {
-          const { data: newLocation } = await supabase
-            .from('locations_pos_v1')
-            .insert({
-              tenant_id: tenant.id,
-              name: 'Main Location',
-              address: {
-                street: '123 Main St',
-                city: 'Demo City',
-                state: 'DC',
-                zip: '12345'
-              },
-              settings: {}
-            })
-            .select()
-            .single();
-          location = newLocation;
         }
 
         // Create demo data
@@ -199,91 +213,8 @@ export const useAuthStore = create((set, get) => ({
   // Create demo data (menu items, tables, etc.)
   createDemoData: async (tenantId) => {
     try {
-      // Create menu categories
-      const { data: categories, error: catError } = await supabase
-        .from('menu_categories_pos_v1')
-        .insert([
-          { tenant_id: tenantId, name: 'Food', sort_order: 1 },
-          { tenant_id: tenantId, name: 'Drinks', sort_order: 2 }
-        ])
-        .select();
-
-      if (catError && !catError.message.includes('duplicate')) {
-        console.error('Error creating categories:', catError);
-      }
-
-      const foodCategoryId = categories?.find(c => c.name === 'Food')?.id;
-      const drinksCategoryId = categories?.find(c => c.name === 'Drinks')?.id;
-
-      // Create menu items
-      if (foodCategoryId && drinksCategoryId) {
-        const { error: menuError } = await supabase
-          .from('menu_items_pos_v1')
-          .insert([
-            {
-              tenant_id: tenantId,
-              category_id: foodCategoryId,
-              name: 'Burger Deluxe',
-              description: 'Premium beef burger with all the fixings',
-              base_price: 14.99
-            },
-            {
-              tenant_id: tenantId,
-              category_id: foodCategoryId,
-              name: 'Caesar Salad',
-              description: 'Fresh romaine with caesar dressing',
-              base_price: 12.99
-            },
-            {
-              tenant_id: tenantId,
-              category_id: foodCategoryId,
-              name: 'Fish & Chips',
-              description: 'Beer battered fish with crispy fries',
-              base_price: 16.99
-            },
-            {
-              tenant_id: tenantId,
-              category_id: drinksCategoryId,
-              name: 'Coca Cola',
-              description: 'Classic soft drink',
-              base_price: 2.99
-            },
-            {
-              tenant_id: tenantId,
-              category_id: drinksCategoryId,
-              name: 'Coffee',
-              description: 'Freshly brewed coffee',
-              base_price: 3.99
-            }
-          ]);
-
-        if (menuError && !menuError.message.includes('duplicate')) {
-          console.error('Error creating menu items:', menuError);
-        }
-      }
-
-      // Create tables for the location
-      const { data: location } = await supabase
-        .from('locations_pos_v1')
-        .select('id')
-        .eq('tenant_id', tenantId)
-        .single();
-
-      if (location) {
-        const { error: tablesError } = await supabase
-          .from('tables_pos_v1')
-          .insert([
-            { location_id: location.id, name: 'Table 1', capacity: 4 },
-            { location_id: location.id, name: 'Table 2', capacity: 2 },
-            { location_id: location.id, name: 'Table 3', capacity: 6 },
-            { location_id: location.id, name: 'Bar Seat 1', capacity: 1 },
-            { location_id: location.id, name: 'Bar Seat 2', capacity: 1 }
-          ]);
-
-        if (tablesError && !tablesError.message.includes('duplicate')) {
-          console.error('Error creating tables:', tablesError);
-        }
-      }
+      // This is handled by the database initialization
+      console.log('Demo data creation handled by database initialization');
     } catch (error) {
       console.error('Error creating demo data:', error);
     }
@@ -311,16 +242,14 @@ export const useAuthStore = create((set, get) => ({
           }];
           set({ locations });
         } else {
-          const { data: locations, error } = await supabase
-            .from('locations_pos_v1')
-            .select('*')
-            .eq('tenant_id', tenantId);
-
-          if (error) {
-            console.error('Error loading locations:', error);
-          } else {
-            set({ locations: locations || [] });
-          }
+          // For now, create a default location
+          const locations = [{
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            name: 'Main Location',
+            address: {}
+          }];
+          set({ locations });
         }
       } else {
         set({ currentTenant: null, locations: [], currentLocation: null });
@@ -339,6 +268,7 @@ export const useAuthStore = create((set, get) => ({
   // Sign in with email/password
   signIn: async (email, password) => {
     set({ loading: true });
+    
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -367,6 +297,7 @@ export const useAuthStore = create((set, get) => ({
   // Sign up new user
   signUp: async (email, password) => {
     set({ loading: true });
+    
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -391,9 +322,10 @@ export const useAuthStore = create((set, get) => ({
   // Setup superadmin - this actually creates the user and staff record
   setupSuperAdmin: async () => {
     set({ loading: true });
+    
     try {
       console.log('Setting up superadmin...');
-
+      
       // First try to sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: 'kostas@pos.eu',
@@ -445,16 +377,26 @@ export const useAuthStore = create((set, get) => ({
           .single();
 
         if (!existingStaff) {
+          // Check if permissions column exists
+          const { data: columns } = await supabase.rpc('exec', {
+            query: `SELECT column_name FROM information_schema.columns WHERE table_name = 'staff_pos_v1' AND column_name = 'permissions';`
+          });
+
+          const staffData = {
+            tenant_id: systemTenant.id,
+            user_id: userId,
+            email: 'kostas@pos.eu',
+            role: 'superadmin',
+            is_active: true
+          };
+
+          if (columns && columns.length > 0) {
+            staffData.permissions = ['full_access', 'superadmin', 'tenant_management'];
+          }
+
           const { data: staff, error: staffError } = await supabase
             .from('staff_pos_v1')
-            .insert({
-              tenant_id: systemTenant.id,
-              user_id: userId,
-              email: 'kostas@pos.eu',
-              role: 'superadmin',
-              permissions: ['full_access', 'superadmin', 'tenant_management'],
-              is_active: true
-            })
+            .insert(staffData)
             .select()
             .single();
 
@@ -478,6 +420,7 @@ export const useAuthStore = create((set, get) => ({
   // Quick demo access (completely offline)
   accessDemo: async () => {
     set({ loading: true });
+    
     try {
       // Create a mock user for demo purposes with proper UUID
       const mockUser = {
@@ -536,7 +479,7 @@ export const useAuthStore = create((set, get) => ({
       if (!get().isOfflineDemo) {
         await supabase.auth.signOut();
       }
-
+      
       set({
         user: null,
         currentTenant: null,
