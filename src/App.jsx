@@ -14,6 +14,7 @@ import OrderPanel from './components/pos/OrderPanel';
 import KitchenDisplay from './components/pos/KitchenDisplay';
 import Dashboard from './components/analytics/Dashboard';
 import SuperAdminPanel from './components/admin/SuperAdminPanel';
+import DatabaseManagement from './components/admin/DatabaseManagement';
 import MenuManagement from './components/pos/MenuManagement';
 import CustomerManagement from './components/pos/CustomerManagement';
 import StaffManagement from './components/pos/StaffManagement';
@@ -28,7 +29,15 @@ import './App.css';
 
 function App() {
   const [activeView, setActiveView] = useState('tables');
-  const { user, currentTenant, currentLocation, loading, initialize, isOfflineDemo, isSuperAdmin } = useAuthStore();
+  const {
+    user,
+    currentTenant,
+    currentLocation,
+    loading,
+    initialize,
+    isOfflineDemo,
+    isSuperAdmin
+  } = useAuthStore();
   const { setupRealtime, cleanup, loadTables, loadMenu } = usePosStore();
 
   // Initialize auth on app start
@@ -42,7 +51,7 @@ function App() {
       setupRealtime(currentLocation.id);
       loadTables(currentLocation.id);
       loadMenu(currentTenant.id);
-      
+
       return () => cleanup();
     }
   }, [currentLocation?.id, currentTenant?.id, isSuperAdmin, setupRealtime, cleanup, loadTables, loadMenu]);
@@ -94,6 +103,8 @@ function App() {
     switch (activeView) {
       case 'superadmin':
         return <SuperAdminPanel />;
+      case 'database':
+        return <DatabaseManagement />;
       case 'tables':
         return (
           <div className="flex flex-1">
@@ -139,7 +150,7 @@ function App() {
           </main>
         </div>
       </div>
-      
+
       <Toaster
         position="top-right"
         toastOptions={{

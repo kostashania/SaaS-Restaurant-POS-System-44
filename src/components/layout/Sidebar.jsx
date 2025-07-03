@@ -4,7 +4,10 @@ import { useAuthStore } from '../../stores/authStore';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, FiChef, FiDollarSign, FiMenu, FiUserCheck, FiShield, FiTrendingUp, FiTag, FiLayers } = FiIcons;
+const {
+  FiGrid, FiUsers, FiBarChart3, FiSettings, FiLogOut, FiChef, FiDollarSign,
+  FiMenu, FiUserCheck, FiShield, FiTrendingUp, FiTag, FiLayers, FiDatabase
+} = FiIcons;
 
 const Sidebar = ({ activeView, setActiveView }) => {
   const { signOut, currentTenant, user, isSuperAdmin } = useAuthStore();
@@ -20,6 +23,7 @@ const Sidebar = ({ activeView, setActiveView }) => {
     { id: 'finance', label: 'Finance', icon: FiTrendingUp },
     { id: 'transactions', label: 'Transactions', icon: FiLayers },
     { id: 'categories', label: 'Categories', icon: FiTag },
+    { id: 'database', label: 'Database', icon: FiDatabase },
     { id: 'settings', label: 'Settings', icon: FiSettings }
   ];
 
@@ -75,6 +79,9 @@ const Sidebar = ({ activeView, setActiveView }) => {
               {item.id === 'superadmin' && (
                 <SafeIcon icon={FiShield} className="text-yellow-500 text-sm ml-auto" />
               )}
+              {item.id === 'database' && (
+                <div className="w-2 h-2 bg-blue-500 rounded-full ml-auto"></div>
+              )}
             </motion.button>
           ))}
         </div>
@@ -95,6 +102,7 @@ const Sidebar = ({ activeView, setActiveView }) => {
             </p>
           </div>
         </div>
+
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
