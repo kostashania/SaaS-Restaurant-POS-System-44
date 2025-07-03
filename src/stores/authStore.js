@@ -10,17 +10,22 @@ export const useAuthStore = create((set, get) => ({
   loading: false,
   isOfflineDemo: false,
   isSuperAdmin: false,
+  initialized: false,
 
   // Initialize auth state
   initialize: async () => {
+    if (get().initialized) return; // Prevent multiple initializations
+    
     set({ loading: true });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         await get().loadUserData(session.user);
       }
+      set({ initialized: true });
     } catch (error) {
       console.error('Auth initialization error:', error);
+      set({ initialized: true });
     }
     set({ loading: false });
   },
@@ -29,7 +34,7 @@ export const useAuthStore = create((set, get) => ({
   loadUserData: async (user) => {
     set({ user });
     try {
-      // Load user's tenants using the new schema
+      // Load user's tenants using the new schema with proper column selection
       const { data: tenants, error } = await supabase
         .from('staff_pos_v1')
         .select(`
@@ -58,10 +63,10 @@ export const useAuthStore = create((set, get) => ({
           role: t.role,
           permissions: t.permissions
         }));
-        
+
         // Check if user is superadmin
         const isSuperAdmin = tenants.some(t => t.role === 'superadmin');
-        
+
         set({ 
           tenants: tenantsData, 
           isSuperAdmin,
@@ -292,20 +297,18 @@ export const useAuthStore = create((set, get) => ({
 
       if (tenantId) {
         if (get().isOfflineDemo) {
-          // Use offline demo locations
-          const locations = [
-            {
-              id: 'demo-location-1',
-              tenant_id: tenantId,
-              name: 'Main Location',
-              address: {
-                street: '123 Demo Street',
-                city: 'Demo City',
-                state: 'DC',
-                zip: '12345'
-              }
+          // Use offline demo locations with proper UUIDs
+          const locations = [{
+            id: crypto.randomUUID(),
+            tenant_id: tenantId,
+            name: 'Main Location',
+            address: {
+              street: '123 Demo Street',
+              city: 'Demo City',
+              state: 'DC',
+              zip: '12345'
             }
-          ];
+          }];
           set({ locations });
         } else {
           const { data: locations, error } = await supabase
@@ -361,7 +364,7 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Sign up new user 
+  // Sign up new user
   signUp: async (email, password) => {
     set({ loading: true });
     try {
@@ -390,7 +393,7 @@ export const useAuthStore = create((set, get) => ({
     set({ loading: true });
     try {
       console.log('Setting up superadmin...');
-      
+
       // First try to sign up the user
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: 'kostas@pos.eu',
@@ -403,22 +406,36 @@ export const useAuthStore = create((set, get) => ({
         return { error: authError };
       }
 
-      // Get the system tenant
-      const { data: systemTenant, error: tenantError } = await supabase
+      // Get or create the system tenant
+      let { data: systemTenant, error: tenantError } = await supabase
         .from('tenants_pos_v1')
         .select('*')
         .eq('name', 'System Administration')
         .single();
 
       if (tenantError || !systemTenant) {
-        console.error('System tenant not found:', tenantError);
-        set({ loading: false });
-        return { error: { message: 'System tenant not found' } };
+        // Create system tenant
+        const { data: newTenant, error: createError } = await supabase
+          .from('tenants_pos_v1')
+          .insert({
+            name: 'System Administration',
+            plan: 'enterprise',
+            settings: { is_global: true }
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating system tenant:', createError);
+          set({ loading: false });
+          return { error: createError };
+        }
+        systemTenant = newTenant;
       }
 
       // Create or update staff record for superadmin
       const userId = authData?.user?.id;
-      if (userId) {
+      if (userId && systemTenant) {
         // Check if staff record exists
         const { data: existingStaff } = await supabase
           .from('staff_pos_v1')
@@ -462,18 +479,18 @@ export const useAuthStore = create((set, get) => ({
   accessDemo: async () => {
     set({ loading: true });
     try {
-      // Create a mock user for demo purposes
+      // Create a mock user for demo purposes with proper UUID
       const mockUser = {
-        id: 'demo-user-' + Date.now(),
+        id: crypto.randomUUID(),
         email: 'demo@restaurant.com',
         created_at: new Date().toISOString(),
         app_metadata: {},
         user_metadata: {}
       };
 
-      // Create mock tenant and location data
+      // Create mock tenant and location data with proper UUIDs
       const mockTenant = {
-        id: 'demo-tenant-' + Date.now(),
+        id: crypto.randomUUID(),
         name: 'Demo Restaurant',
         plan: 'pro',
         role: 'admin',
@@ -481,7 +498,7 @@ export const useAuthStore = create((set, get) => ({
       };
 
       const mockLocation = {
-        id: 'demo-location-' + Date.now(),
+        id: crypto.randomUUID(),
         tenant_id: mockTenant.id,
         name: 'Main Location',
         address: {
@@ -493,7 +510,7 @@ export const useAuthStore = create((set, get) => ({
       };
 
       // Set everything in offline demo mode
-      set({ 
+      set({
         user: mockUser,
         tenants: [mockTenant],
         locations: [mockLocation],
@@ -501,13 +518,14 @@ export const useAuthStore = create((set, get) => ({
         currentLocation: mockLocation,
         isOfflineDemo: true,
         isSuperAdmin: false,
-        loading: false
+        loading: false,
+        initialized: true
       });
-      
+
       return { data: { user: mockUser }, error: null };
     } catch (error) {
       console.error('Demo access error:', error);
-      set({ loading: false });
+      set({ loading: false, initialized: true });
       return { error };
     }
   },
@@ -518,6 +536,7 @@ export const useAuthStore = create((set, get) => ({
       if (!get().isOfflineDemo) {
         await supabase.auth.signOut();
       }
+
       set({
         user: null,
         currentTenant: null,
@@ -525,7 +544,8 @@ export const useAuthStore = create((set, get) => ({
         tenants: [],
         locations: [],
         isOfflineDemo: false,
-        isSuperAdmin: false
+        isSuperAdmin: false,
+        initialized: false
       });
     } catch (error) {
       console.error('Sign out error:', error);

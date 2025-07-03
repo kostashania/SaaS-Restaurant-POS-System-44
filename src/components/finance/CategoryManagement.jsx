@@ -21,7 +21,7 @@ const CategoryManagement = () => {
     description: ''
   });
 
-  const { user, currentTenant } = useAuthStore();
+  const { user, currentTenant, isOfflineDemo } = useAuthStore();
 
   const availableIcons = [
     'FiDollarSign', 'FiShoppingBag', 'FiCoffee', 'FiHome', 'FiCar', 'FiHeart',
@@ -38,6 +38,34 @@ const CategoryManagement = () => {
   const loadCategories = useCallback(async () => {
     if (!user?.id) return;
     
+    // Skip database calls in offline demo mode
+    if (isOfflineDemo) {
+      // Set mock categories for demo
+      setCategories([
+        {
+          id: '1',
+          name: 'Restaurant Sales',
+          type: 'income',
+          color: '#22c55e',
+          icon: 'FiDollarSign',
+          description: 'Revenue from food and beverage sales',
+          is_active: true,
+          scope: 'business'
+        },
+        {
+          id: '2',
+          name: 'Food Supplies',
+          type: 'expense',
+          color: '#ef4444',
+          icon: 'FiShoppingBag',
+          description: 'Ingredients and food supplies',
+          is_active: true,
+          scope: 'business'
+        }
+      ]);
+      return;
+    }
+    
     try {
       let query = supabase
         .from('financial_categories_pos_v1')
@@ -47,9 +75,15 @@ const CategoryManagement = () => {
         .order('name', { ascending: true });
 
       if (activeScope === 'business' && currentTenant?.id) {
-        query = query.eq('tenant_id', currentTenant.id);
+        // Only add tenant filter if we have a valid UUID
+        if (currentTenant.id.includes('-') && currentTenant.id.length === 36) {
+          query = query.eq('tenant_id', currentTenant.id);
+        }
       } else if (activeScope === 'personal') {
-        query = query.eq('user_id', user.id);
+        // Only add user filter if we have a valid UUID
+        if (user.id.includes('-') && user.id.length === 36) {
+          query = query.eq('user_id', user.id);
+        }
       }
 
       const { data, error } = await query;
@@ -63,7 +97,7 @@ const CategoryManagement = () => {
     } catch (error) {
       console.error('Error loading categories:', error);
     }
-  }, [activeScope, currentTenant?.id, user?.id]);
+  }, [activeScope, currentTenant?.id, user?.id, isOfflineDemo]);
 
   useEffect(() => {
     loadCategories();
@@ -73,16 +107,45 @@ const CategoryManagement = () => {
     e.preventDefault();
     setLoading(true);
     
+    // Handle offline demo mode
+    if (isOfflineDemo) {
+      const newCategory = {
+        id: Date.now().toString(),
+        ...formData,
+        scope: activeScope,
+        is_active: true,
+        created_at: new Date().toISOString()
+      };
+
+      if (editingCategory) {
+        setCategories(prev => prev.map(cat => 
+          cat.id === editingCategory.id ? { ...cat, ...formData } : cat
+        ));
+      } else {
+        setCategories(prev => [...prev, newCategory]);
+      }
+
+      resetForm();
+      setLoading(false);
+      return;
+    }
+    
     try {
       const categoryData = {
         ...formData,
         scope: activeScope
       };
 
-      if (activeScope === 'business') {
-        categoryData.tenant_id = currentTenant.id;
-      } else {
-        categoryData.user_id = user.id;
+      if (activeScope === 'business' && currentTenant?.id) {
+        // Only add tenant_id if it's a valid UUID
+        if (currentTenant.id.includes('-') && currentTenant.id.length === 36) {
+          categoryData.tenant_id = currentTenant.id;
+        }
+      } else if (activeScope === 'personal') {
+        // Only add user_id if it's a valid UUID
+        if (user.id.includes('-') && user.id.length === 36) {
+          categoryData.user_id = user.id;
+        }
       }
 
       if (editingCategory) {
@@ -137,6 +200,11 @@ const CategoryManagement = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
 
+    if (isOfflineDemo) {
+      setCategories(prev => prev.filter(cat => cat.id !== id));
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('financial_categories_pos_v1')
@@ -152,6 +220,13 @@ const CategoryManagement = () => {
   };
 
   const toggleActive = async (id, isActive) => {
+    if (isOfflineDemo) {
+      setCategories(prev => prev.map(cat => 
+        cat.id === id ? { ...cat, is_active: !isActive } : cat
+      ));
+      return;
+    }
+
     try {
       const { error } = await supabase
         .from('financial_categories_pos_v1')
@@ -397,6 +472,14 @@ const CategoryManagement = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
+      {isOfflineDemo && (
+        <div className="mb-4 p-4 bg-warning-50 border border-warning-200 rounded-lg">
+          <p className="text-warning-800 text-sm">
+            <strong>Demo Mode:</strong> Changes are simulated and won't be saved permanently.
+          </p>
+        </div>
+      )}
+
       <div className="mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>
