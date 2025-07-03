@@ -1,17 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { supabase } from '../../config/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
-const { FiPlus, FiEdit3, FiTrash2, FiTag, FiSave, FiX } = FiIcons;
+const { FiPlus, FiEdit3, FiTrash2, FiTag, FiSave, FiX, FiCheck } = FiIcons;
 
 const CategoryManagement = () => {
   const [activeScope, setActiveScope] = useState('business');
   const [categories, setCategories] = useState([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'expense',
@@ -34,11 +35,9 @@ const CategoryManagement = () => {
     '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#64748b'
   ];
 
-  useEffect(() => {
-    loadCategories();
-  }, [activeScope, currentTenant?.id, user?.id]);
-
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
+    if (!user?.id) return;
+    
     try {
       let query = supabase
         .from('financial_categories_pos_v1')
@@ -64,10 +63,15 @@ const CategoryManagement = () => {
     } catch (error) {
       console.error('Error loading categories:', error);
     }
-  };
+  }, [activeScope, currentTenant?.id, user?.id]);
+
+  useEffect(() => {
+    loadCategories();
+  }, [loadCategories]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
       const categoryData = {
@@ -100,7 +104,9 @@ const CategoryManagement = () => {
       loadCategories();
     } catch (error) {
       console.error('Error saving category:', error);
-      alert('Error saving category: ' + error.message);
+      alert('Error saving category: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -141,7 +147,7 @@ const CategoryManagement = () => {
       loadCategories();
     } catch (error) {
       console.error('Error deleting category:', error);
-      alert('Error deleting category: ' + error.message);
+      alert('Error deleting category: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -213,7 +219,7 @@ const CategoryManagement = () => {
             }`}
             title={category.is_active ? 'Deactivate' : 'Activate'}
           >
-            <SafeIcon icon={category.is_active ? FiX : FiIcons.FiCheck} />
+            <SafeIcon icon={category.is_active ? FiX : FiCheck} />
           </button>
           <button
             onClick={() => handleEdit(category)}
@@ -240,12 +246,14 @@ const CategoryManagement = () => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && resetForm()}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             className="bg-white rounded-xl p-6 w-full max-w-md"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900">
@@ -264,10 +272,11 @@ const CategoryManagement = () => {
                 <input
                   type="text"
                   value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Category name"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -277,9 +286,10 @@ const CategoryManagement = () => {
                 </label>
                 <select
                   value={formData.type}
-                  onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   required
+                  disabled={loading}
                 >
                   <option value="income">Income</option>
                   <option value="expense">Expense</option>
@@ -295,19 +305,21 @@ const CategoryManagement = () => {
                     <button
                       key={color}
                       type="button"
-                      onClick={() => setFormData({ ...formData, color })}
+                      onClick={() => setFormData(prev => ({ ...prev, color }))}
                       className={`w-8 h-8 rounded-full border-2 ${
                         formData.color === color ? 'border-gray-800' : 'border-gray-300'
                       }`}
                       style={{ backgroundColor: color }}
+                      disabled={loading}
                     />
                   ))}
                 </div>
                 <input
                   type="color"
                   value={formData.color}
-                  onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, color: e.target.value }))}
                   className="w-full h-10 border border-gray-300 rounded-lg"
+                  disabled={loading}
                 />
               </div>
 
@@ -322,12 +334,13 @@ const CategoryManagement = () => {
                       <button
                         key={iconName}
                         type="button"
-                        onClick={() => setFormData({ ...formData, icon: iconName })}
+                        onClick={() => setFormData(prev => ({ ...prev, icon: iconName }))}
                         className={`p-2 rounded-lg border ${
                           formData.icon === iconName 
                             ? 'border-primary-500 bg-primary-50' 
                             : 'border-gray-300 hover:bg-gray-50'
                         }`}
+                        disabled={loading}
                       >
                         {IconComponent && <IconComponent className="text-lg" />}
                       </button>
@@ -342,10 +355,11 @@ const CategoryManagement = () => {
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Optional description"
                   rows="2"
+                  disabled={loading}
                 />
               </div>
 
@@ -354,15 +368,21 @@ const CategoryManagement = () => {
                   type="button"
                   onClick={resetForm}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  disabled={loading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={loading}
                 >
-                  <SafeIcon icon={FiSave} />
-                  {editingCategory ? 'Update' : 'Create'}
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <SafeIcon icon={FiSave} />
+                  )}
+                  {loading ? 'Saving...' : (editingCategory ? 'Update' : 'Create')}
                 </button>
               </div>
             </form>

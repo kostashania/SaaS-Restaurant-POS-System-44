@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
 import { supabase } from '../../config/supabase';
@@ -16,6 +16,7 @@ const TransactionManagement = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('all');
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -30,12 +31,9 @@ const TransactionManagement = () => {
 
   const { user, currentTenant } = useAuthStore();
 
-  useEffect(() => {
-    loadTransactions();
-    loadCategories();
-  }, [activeScope, currentTenant?.id, user?.id]);
-
-  const loadTransactions = async () => {
+  const loadTransactions = useCallback(async () => {
+    if (!user?.id) return;
+    
     try {
       let query = supabase
         .from('financial_transactions_pos_v1')
@@ -63,9 +61,11 @@ const TransactionManagement = () => {
     } catch (error) {
       console.error('Error loading transactions:', error);
     }
-  };
+  }, [activeScope, currentTenant?.id, user?.id]);
 
-  const loadCategories = async () => {
+  const loadCategories = useCallback(async () => {
+    if (!user?.id) return;
+    
     try {
       let query = supabase
         .from('financial_categories_pos_v1')
@@ -91,10 +91,16 @@ const TransactionManagement = () => {
     } catch (error) {
       console.error('Error loading categories:', error);
     }
-  };
+  }, [activeScope, currentTenant?.id, user?.id]);
+
+  useEffect(() => {
+    loadTransactions();
+    loadCategories();
+  }, [loadTransactions, loadCategories]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
       const transactionData = {
@@ -129,7 +135,9 @@ const TransactionManagement = () => {
       loadTransactions();
     } catch (error) {
       console.error('Error saving transaction:', error);
-      alert('Error saving transaction: ' + error.message);
+      alert('Error saving transaction: ' + (error.message || 'Unknown error'));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -178,7 +186,7 @@ const TransactionManagement = () => {
       loadTransactions();
     } catch (error) {
       console.error('Error deleting transaction:', error);
-      alert('Error deleting transaction: ' + error.message);
+      alert('Error deleting transaction: ' + (error.message || 'Unknown error'));
     }
   };
 
@@ -278,12 +286,14 @@ const TransactionManagement = () => {
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+          onClick={(e) => e.target === e.currentTarget && resetForm()}
         >
           <motion.div
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.9, opacity: 0 }}
             className="bg-white rounded-xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-xl font-bold text-gray-900">
@@ -302,10 +312,11 @@ const TransactionManagement = () => {
                 <input
                   type="text"
                   value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, title: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Transaction title"
                   required
+                  disabled={loading}
                 />
               </div>
 
@@ -315,10 +326,11 @@ const TransactionManagement = () => {
                 </label>
                 <textarea
                   value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Optional description"
                   rows="2"
+                  disabled={loading}
                 />
               </div>
 
@@ -332,10 +344,11 @@ const TransactionManagement = () => {
                     step="0.01"
                     min="0"
                     value={formData.amount}
-                    onChange={(e) => setFormData({ ...formData, amount: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, amount: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     placeholder="0.00"
                     required
+                    disabled={loading}
                   />
                 </div>
 
@@ -345,9 +358,10 @@ const TransactionManagement = () => {
                   </label>
                   <select
                     value={formData.type}
-                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                     required
+                    disabled={loading}
                   >
                     <option value="income">Income</option>
                     <option value="expense">Expense</option>
@@ -361,8 +375,9 @@ const TransactionManagement = () => {
                 </label>
                 <select
                   value={formData.category_id}
-                  onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, category_id: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                  disabled={loading}
                 >
                   <option value="">Select category</option>
                   {categories
@@ -382,8 +397,9 @@ const TransactionManagement = () => {
                   </label>
                   <select
                     value={formData.payment_method}
-                    onChange={(e) => setFormData({ ...formData, payment_method: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, payment_method: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    disabled={loading}
                   >
                     <option value="cash">Cash</option>
                     <option value="card">Card</option>
@@ -400,8 +416,9 @@ const TransactionManagement = () => {
                   <input
                     type="date"
                     value={formData.transaction_date}
-                    onChange={(e) => setFormData({ ...formData, transaction_date: e.target.value })}
+                    onChange={(e) => setFormData(prev => ({ ...prev, transaction_date: e.target.value }))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                    disabled={loading}
                   />
                 </div>
               </div>
@@ -413,9 +430,10 @@ const TransactionManagement = () => {
                 <input
                   type="text"
                   value={formData.reference_number}
-                  onChange={(e) => setFormData({ ...formData, reference_number: e.target.value })}
+                  onChange={(e) => setFormData(prev => ({ ...prev, reference_number: e.target.value }))}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
                   placeholder="Optional reference number"
+                  disabled={loading}
                 />
               </div>
 
@@ -424,15 +442,21 @@ const TransactionManagement = () => {
                   type="button"
                   onClick={resetForm}
                   className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                  disabled={loading}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center justify-center gap-2"
+                  className="flex-1 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 flex items-center justify-center gap-2 disabled:opacity-50"
+                  disabled={loading}
                 >
-                  <SafeIcon icon={FiSave} />
-                  {editingTransaction ? 'Update' : 'Create'}
+                  {loading ? (
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  ) : (
+                    <SafeIcon icon={FiSave} />
+                  )}
+                  {loading ? 'Saving...' : (editingTransaction ? 'Update' : 'Create')}
                 </button>
               </div>
             </form>
