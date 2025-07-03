@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '../../stores/authStore';
-import { supabase, initializeDatabase } from '../../config/supabase';
+import { supabase } from '../../config/supabase';
 import SafeIcon from '../../common/SafeIcon';
 import * as FiIcons from 'react-icons/fi';
 
@@ -13,7 +13,7 @@ const CategoryManagement = () => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCategory, setEditingCategory] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [dbReady, setDbReady] = useState(false);
+  const [useInMemory, setUseInMemory] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     type: 'expense',
@@ -23,6 +23,54 @@ const CategoryManagement = () => {
   });
 
   const { user, currentTenant, isOfflineDemo } = useAuthStore();
+
+  // In-memory storage for when database is not available
+  const [inMemoryCategories, setInMemoryCategories] = useState([
+    {
+      id: '1',
+      name: 'Restaurant Sales',
+      type: 'income',
+      color: '#22c55e',
+      icon: 'FiDollarSign',
+      description: 'Revenue from food and beverage sales',
+      is_active: true,
+      scope: 'business',
+      user_id: 'demo'
+    },
+    {
+      id: '2',
+      name: 'Food Supplies',
+      type: 'expense',
+      color: '#ef4444',
+      icon: 'FiShoppingBag',
+      description: 'Ingredients and food supplies',
+      is_active: true,
+      scope: 'business',
+      user_id: 'demo'
+    },
+    {
+      id: '3',
+      name: 'Salary Income',
+      type: 'income',
+      color: '#3b82f6',
+      icon: 'FiBriefcase',
+      description: 'Personal salary and wages',
+      is_active: true,
+      scope: 'personal',
+      user_id: 'demo'
+    },
+    {
+      id: '4',
+      name: 'Groceries',
+      type: 'expense',
+      color: '#f59e0b',
+      icon: 'FiShoppingCart',
+      description: 'Personal grocery expenses',
+      is_active: true,
+      scope: 'personal',
+      user_id: 'demo'
+    }
+  ]);
 
   const availableIcons = [
     'FiDollarSign', 'FiShoppingBag', 'FiCoffee', 'FiHome', 'FiCar', 'FiHeart',
@@ -36,229 +84,130 @@ const CategoryManagement = () => {
     '#ec4899', '#06b6d4', '#84cc16', '#f97316', '#64748b'
   ];
 
-  // Initialize database on mount
+  // Test database connection on mount
   useEffect(() => {
-    const initDb = async () => {
-      const result = await initializeDatabase();
-      setDbReady(result.success);
-      if (result.success) {
-        await ensureTenantExists();
-        loadCategories();
-      }
-    };
-    initDb();
+    testDatabaseConnection();
   }, []);
 
-  // Ensure tenant exists before saving categories
-  const ensureTenantExists = async () => {
-    if (isOfflineDemo || !user?.id) return true;
+  const testDatabaseConnection = async () => {
+    if (isOfflineDemo) {
+      setUseInMemory(true);
+      setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
+      return;
+    }
 
     try {
-      // Check if current tenant exists in database
-      if (currentTenant?.id) {
-        const { data: existingTenant, error: checkError } = await supabase
-          .from('tenants_pos_v1')
-          .select('id')
-          .eq('id', currentTenant.id)
-          .single();
+      const { error } = await supabase
+        .from('financial_categories_pos_v1')
+        .select('id')
+        .limit(1);
 
-        if (!checkError && existingTenant) {
-          return true; // Tenant exists
-        }
+      if (error) {
+        console.log('Database not available, using in-memory storage');
+        setUseInMemory(true);
+        setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
+      } else {
+        setUseInMemory(false);
+        loadCategories();
       }
-
-      // Create tenant if it doesn't exist
-      const tenantData = {
-        name: currentTenant?.name || 'Demo Restaurant',
-        plan: currentTenant?.plan || 'pro',
-        settings: {}
-      };
-
-      const { data: newTenant, error: createError } = await supabase
-        .from('tenants_pos_v1')
-        .insert(tenantData)
-        .select()
-        .single();
-
-      if (createError) {
-        console.error('Error creating tenant:', createError);
-        return false;
-      }
-
-      // Update currentTenant with the new ID
-      if (newTenant) {
-        // Update the auth store with the new tenant ID
-        const updatedTenant = { ...currentTenant, id: newTenant.id };
-        // You might want to update the auth store here
-        console.log('Created new tenant:', newTenant.id);
-        return true;
-      }
-
-      return false;
     } catch (error) {
-      console.error('Error ensuring tenant exists:', error);
-      return false;
+      console.log('Database connection failed, using in-memory storage');
+      setUseInMemory(true);
+      setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
     }
   };
 
   const loadCategories = useCallback(async () => {
-    if (!user?.id || isOfflineDemo) {
-      // Set mock categories for demo
-      setCategories([
-        {
-          id: '1',
-          name: 'Restaurant Sales',
-          type: 'income',
-          color: '#22c55e',
-          icon: 'FiDollarSign',
-          description: 'Revenue from food and beverage sales',
-          is_active: true,
-          scope: 'business'
-        },
-        {
-          id: '2',
-          name: 'Food Supplies',
-          type: 'expense',
-          color: '#ef4444',
-          icon: 'FiShoppingBag',
-          description: 'Ingredients and food supplies',
-          is_active: true,
-          scope: 'business'
-        }
-      ]);
+    if (!user?.id || useInMemory || isOfflineDemo) {
+      setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
       return;
     }
-
-    if (!dbReady) return;
 
     try {
       setLoading(true);
 
-      // For personal scope, only filter by user_id and scope
-      if (activeScope === 'personal') {
-        const { data, error } = await supabase
-          .from('financial_categories_pos_v1')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('scope', 'personal')
-          .order('type', { ascending: true })
-          .order('name', { ascending: true });
+      const { data, error } = await supabase
+        .from('financial_categories_pos_v1')
+        .select('*')
+        .eq('scope', activeScope)
+        .eq('user_id', user.id)
+        .order('type', { ascending: true })
+        .order('name', { ascending: true });
 
-        if (error) {
-          console.error('Error loading personal categories:', error);
-          setCategories([]);
-        } else {
-          setCategories(data || []);
-        }
+      if (error) {
+        console.error('Error loading categories:', error);
+        setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
+        setUseInMemory(true);
       } else {
-        // For business scope, we need a tenant_id, but make it optional
-        let query = supabase
-          .from('financial_categories_pos_v1')
-          .select('*')
-          .eq('scope', 'business')
-          .order('type', { ascending: true })
-          .order('name', { ascending: true });
-
-        // Only add tenant filter if we have a valid tenant
-        if (currentTenant?.id) {
-          query = query.eq('tenant_id', currentTenant.id);
-        } else {
-          // If no tenant, filter by user_id as fallback
-          query = query.eq('user_id', user.id);
-        }
-
-        const { data, error } = await query;
-
-        if (error) {
-          console.error('Error loading business categories:', error);
-          setCategories([]);
-        } else {
-          setCategories(data || []);
-        }
+        setCategories(data || []);
       }
     } catch (error) {
       console.error('Error loading categories:', error);
-      setCategories([]);
+      setCategories(inMemoryCategories.filter(cat => cat.scope === activeScope));
+      setUseInMemory(true);
     } finally {
       setLoading(false);
     }
-  }, [activeScope, currentTenant?.id, user?.id, isOfflineDemo, dbReady]);
+  }, [activeScope, user?.id, useInMemory, isOfflineDemo, inMemoryCategories]);
 
   useEffect(() => {
-    if (dbReady) {
-      loadCategories();
-    }
-  }, [loadCategories, dbReady]);
+    loadCategories();
+  }, [loadCategories]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
 
-    // Handle offline demo mode
-    if (isOfflineDemo || !dbReady) {
-      const newCategory = {
-        id: Date.now().toString(),
-        ...formData,
-        scope: activeScope,
-        is_active: true,
-        created_at: new Date().toISOString()
-      };
-
-      if (editingCategory) {
-        setCategories(prev => prev.map(cat =>
-          cat.id === editingCategory.id ? { ...cat, ...formData } : cat
-        ));
-      } else {
-        setCategories(prev => [...prev, newCategory]);
-      }
-
-      resetForm();
-      setLoading(false);
-      return;
-    }
-
     try {
-      const categoryData = {
-        ...formData,
-        scope: activeScope,
-        user_id: user.id // Always set user_id
-      };
+      if (useInMemory || isOfflineDemo) {
+        // Handle in-memory storage
+        const newCategory = {
+          id: Date.now().toString(),
+          ...formData,
+          scope: activeScope,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          user_id: user?.id || 'demo'
+        };
 
-      // Only set tenant_id for business scope and if tenant exists
-      if (activeScope === 'business') {
-        const tenantExists = await ensureTenantExists();
-        if (tenantExists && currentTenant?.id) {
-          // Verify tenant exists in database before using it
-          const { data: verifyTenant, error: verifyError } = await supabase
-            .from('tenants_pos_v1')
-            .select('id')
-            .eq('id', currentTenant.id)
-            .single();
-
-          if (!verifyError && verifyTenant) {
-            categoryData.tenant_id = currentTenant.id;
-          }
-          // If tenant doesn't exist, we'll just use user_id (already set above)
+        if (editingCategory) {
+          const updatedCategories = inMemoryCategories.map(cat =>
+            cat.id === editingCategory.id ? { ...cat, ...formData } : cat
+          );
+          setInMemoryCategories(updatedCategories);
+          setCategories(updatedCategories.filter(cat => cat.scope === activeScope));
+        } else {
+          const updatedCategories = [...inMemoryCategories, newCategory];
+          setInMemoryCategories(updatedCategories);
+          setCategories(updatedCategories.filter(cat => cat.scope === activeScope));
         }
-      }
-
-      if (editingCategory) {
-        const { error } = await supabase
-          .from('financial_categories_pos_v1')
-          .update(categoryData)
-          .eq('id', editingCategory.id);
-
-        if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from('financial_categories_pos_v1')
-          .insert(categoryData);
+        // Handle database storage
+        const categoryData = {
+          ...formData,
+          scope: activeScope,
+          user_id: user.id
+        };
 
-        if (error) throw error;
+        if (editingCategory) {
+          const { error } = await supabase
+            .from('financial_categories_pos_v1')
+            .update(categoryData)
+            .eq('id', editingCategory.id);
+
+          if (error) throw error;
+        } else {
+          const { error } = await supabase
+            .from('financial_categories_pos_v1')
+            .insert(categoryData);
+
+          if (error) throw error;
+        }
+
+        loadCategories();
       }
 
       resetForm();
-      loadCategories();
     } catch (error) {
       console.error('Error saving category:', error);
       alert('Error saving category: ' + (error.message || 'Unknown error'));
@@ -294,19 +243,20 @@ const CategoryManagement = () => {
   const handleDelete = async (id) => {
     if (!window.confirm('Are you sure you want to delete this category?')) return;
 
-    if (isOfflineDemo || !dbReady) {
-      setCategories(prev => prev.filter(cat => cat.id !== id));
-      return;
-    }
-
     try {
-      const { error } = await supabase
-        .from('financial_categories_pos_v1')
-        .delete()
-        .eq('id', id);
+      if (useInMemory || isOfflineDemo) {
+        const updatedCategories = inMemoryCategories.filter(cat => cat.id !== id);
+        setInMemoryCategories(updatedCategories);
+        setCategories(updatedCategories.filter(cat => cat.scope === activeScope));
+      } else {
+        const { error } = await supabase
+          .from('financial_categories_pos_v1')
+          .delete()
+          .eq('id', id);
 
-      if (error) throw error;
-      loadCategories();
+        if (error) throw error;
+        loadCategories();
+      }
     } catch (error) {
       console.error('Error deleting category:', error);
       alert('Error deleting category: ' + (error.message || 'Unknown error'));
@@ -314,21 +264,22 @@ const CategoryManagement = () => {
   };
 
   const toggleActive = async (id, isActive) => {
-    if (isOfflineDemo || !dbReady) {
-      setCategories(prev => prev.map(cat =>
-        cat.id === id ? { ...cat, is_active: !isActive } : cat
-      ));
-      return;
-    }
-
     try {
-      const { error } = await supabase
-        .from('financial_categories_pos_v1')
-        .update({ is_active: !isActive })
-        .eq('id', id);
+      if (useInMemory || isOfflineDemo) {
+        const updatedCategories = inMemoryCategories.map(cat =>
+          cat.id === id ? { ...cat, is_active: !isActive } : cat
+        );
+        setInMemoryCategories(updatedCategories);
+        setCategories(updatedCategories.filter(cat => cat.scope === activeScope));
+      } else {
+        const { error } = await supabase
+          .from('financial_categories_pos_v1')
+          .update({ is_active: !isActive })
+          .eq('id', id);
 
-      if (error) throw error;
-      loadCategories();
+        if (error) throw error;
+        loadCategories();
+      }
     } catch (error) {
       console.error('Error updating category:', error);
     }
@@ -568,11 +519,10 @@ const CategoryManagement = () => {
 
   return (
     <div className="p-6 bg-gray-50 min-h-screen">
-      {(isOfflineDemo || !dbReady) && (
-        <div className="mb-4 p-4 bg-warning-50 border border-warning-200 rounded-lg">
-          <p className="text-warning-800 text-sm">
-            <strong>{!dbReady ? 'Database Initializing:' : 'Demo Mode:'}</strong>{' '}
-            {!dbReady ? 'Setting up database connection...' : 'Changes are simulated and won\'t be saved permanently.'}
+      {(useInMemory || isOfflineDemo) && (
+        <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <p className="text-blue-800 text-sm">
+            <strong>Demo Mode:</strong> Using in-memory storage. Changes will be lost on refresh.
           </p>
         </div>
       )}
